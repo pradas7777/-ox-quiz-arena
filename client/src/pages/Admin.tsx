@@ -3,15 +3,25 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Loader2, Plus, Trash2, BarChart3, RefreshCw, Bot } from "lucide-react";
+import { Loader2, Plus, Trash2, BarChart3, RefreshCw, Bot, Palette, Settings } from "lucide-react";
 import { Link } from "wouter";
 
 export default function Admin() {
   const { user, loading } = useAuth();
   const [botName, setBotName] = useState("");
   const [spawnCount, setSpawnCount] = useState(5);
+  
+  // Theme settings state
+  const [primaryColor, setPrimaryColor] = useState("#94f814");
+  const [secondaryColor, setSecondaryColor] = useState("#00ffff");
+  const [accentColor, setAccentColor] = useState("#ff00ff");
+  const [fontFamily, setFontFamily] = useState("Orbitron");
+  const [enableGlitch, setEnableGlitch] = useState(true);
+  const [enableScanline, setEnableScanline] = useState(true);
 
   const { data: stats, refetch: refetchStats } = trpc.admin.getGameStats.useQuery(undefined, {
     refetchInterval: 5000,
@@ -67,272 +77,417 @@ export default function Admin() {
     },
   });
 
+  const handleSpawnMultipleBots = async () => {
+    for (let i = 0; i < spawnCount; i++) {
+      await spawnBotMutation.mutateAsync({
+        nickname: `Bot-${Date.now()}-${i}`,
+      });
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+  };
+
+  const applyTheme = () => {
+    const root = document.documentElement;
+    root.style.setProperty('--primary-color', primaryColor);
+    root.style.setProperty('--secondary-color', secondaryColor);
+    root.style.setProperty('--accent-color', accentColor);
+    
+    // Save to localStorage
+    localStorage.setItem('theme-primary', primaryColor);
+    localStorage.setItem('theme-secondary', secondaryColor);
+    localStorage.setItem('theme-accent', accentColor);
+    localStorage.setItem('theme-font', fontFamily);
+    localStorage.setItem('theme-glitch', enableGlitch.toString());
+    localStorage.setItem('theme-scanline', enableScanline.toString());
+    
+    toast.success("Theme applied successfully!");
+  };
+
+  const resetTheme = () => {
+    setPrimaryColor("#94f814");
+    setSecondaryColor("#00ffff");
+    setAccentColor("#ff00ff");
+    setFontFamily("Orbitron");
+    setEnableGlitch(true);
+    setEnableScanline(true);
+    
+    localStorage.removeItem('theme-primary');
+    localStorage.removeItem('theme-secondary');
+    localStorage.removeItem('theme-accent');
+    localStorage.removeItem('theme-font');
+    localStorage.removeItem('theme-glitch');
+    localStorage.removeItem('theme-scanline');
+    
+    const root = document.documentElement;
+    root.style.removeProperty('--primary-color');
+    root.style.removeProperty('--secondary-color');
+    root.style.removeProperty('--accent-color');
+    
+    toast.success("Theme reset to default!");
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-zinc-400" />
+      <div className="min-h-screen flex items-center justify-center scan-line">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
 
   if (!user || user.role !== 'admin') {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <Card className="bg-zinc-900 border-zinc-800 p-8 text-center">
-          <h1 className="text-2xl font-bold text-red-400 mb-4">Access Denied</h1>
-          <p className="text-zinc-400 mb-6">Admin access required</p>
+      <div className="min-h-screen flex items-center justify-center scan-line">
+        <Card className="cyber-card p-8 text-center">
+          <h1 className="text-2xl font-['Orbitron'] font-bold text-destructive mb-4">ACCESS DENIED</h1>
+          <p className="text-muted-foreground mb-6">Admin access required</p>
           <Link href="/">
-            <Button>Go Home</Button>
+            <Button className="cyber-button">Go Home</Button>
           </Link>
         </Card>
       </div>
     );
   }
 
-  const handleSpawnMultipleBots = async () => {
-    for (let i = 0; i < spawnCount; i++) {
-      await spawnBotMutation.mutateAsync({
-        nickname: `Bot-${Date.now()}-${i}`,
-      });
-      // Small delay between spawns
-      await new Promise(resolve => setTimeout(resolve, 200));
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
+    <div className="min-h-screen scan-line">
+      <div className="fixed inset-0 cyber-grid opacity-20 pointer-events-none" />
+      
       {/* Header */}
-      <header className="border-b border-zinc-800 bg-zinc-900/50 backdrop-blur">
+      <header className="border-b border-primary/30 neon-box relative z-10">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-purple-400">Admin Control Panel</h1>
-            <p className="text-sm text-zinc-400">Game Testing & Management</p>
+            <h1 className="text-2xl font-['Orbitron'] font-bold neon-text glitch">ADMIN CONTROL PANEL</h1>
+            <p className="text-sm text-muted-foreground font-['Rajdhani']">Game Testing & Management</p>
           </div>
           <div className="flex items-center gap-4">
             <Link href="/arena">
-              <Button variant="outline">View Game Arena</Button>
+              <Button className="cyber-button" style={{borderColor: '#00ffff', color: '#00ffff'}}>View Game Arena</Button>
             </Link>
             <Link href="/">
-              <Button variant="ghost">Home</Button>
+              <Button className="cyber-button" style={{borderColor: '#ff00ff', color: '#ff00ff'}}>Home</Button>
             </Link>
           </div>
         </div>
       </header>
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-8 relative z-10">
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <Card className="bg-zinc-900 border-zinc-800 p-6">
+          <Card className="cyber-card p-6">
             <div className="flex items-center justify-between mb-2">
-              <BarChart3 className="w-5 h-5 text-blue-400" />
-              <span className="text-2xl font-bold text-blue-400">{stats?.totalRounds ?? 0}</span>
+              <BarChart3 className="w-5 h-5 text-primary" />
+              <span className="text-2xl font-['Orbitron'] font-bold text-primary">{stats?.totalRounds ?? 0}</span>
             </div>
-            <div className="text-sm text-zinc-400">Total Rounds</div>
+            <div className="text-sm text-muted-foreground font-['Rajdhani']">Total Rounds</div>
           </Card>
 
-          <Card className="bg-zinc-900 border-zinc-800 p-6">
+          <Card className="cyber-card p-6">
             <div className="flex items-center justify-between mb-2">
-              <Bot className="w-5 h-5 text-green-400" />
-              <span className="text-2xl font-bold text-green-400">{stats?.totalAgents ?? 0}</span>
+              <Bot className="w-5 h-5" style={{color: '#00ffff'}} />
+              <span className="text-2xl font-['Orbitron'] font-bold" style={{color: '#00ffff'}}>{stats?.totalAgents ?? 0}</span>
             </div>
-            <div className="text-sm text-zinc-400">Total Agents</div>
+            <div className="text-sm text-muted-foreground font-['Rajdhani']">Total Agents</div>
           </Card>
 
-          <Card className="bg-zinc-900 border-zinc-800 p-6">
+          <Card className="cyber-card p-6">
             <div className="flex items-center justify-between mb-2">
-              <Bot className="w-5 h-5 text-yellow-400" />
-              <span className="text-2xl font-bold text-yellow-400">{stats?.connectedAgents ?? 0}</span>
+              <Bot className="w-5 h-5" style={{color: '#ffff00'}} />
+              <span className="text-2xl font-['Orbitron'] font-bold" style={{color: '#ffff00'}}>{stats?.connectedAgents ?? 0}</span>
             </div>
-            <div className="text-sm text-zinc-400">Connected Agents</div>
+            <div className="text-sm text-muted-foreground font-['Rajdhani']">Connected Agents</div>
           </Card>
 
-          <Card className="bg-zinc-900 border-zinc-800 p-6">
+          <Card className="cyber-card p-6">
             <div className="flex items-center justify-between mb-2">
-              <Bot className="w-5 h-5 text-purple-400" />
-              <span className="text-2xl font-bold text-purple-400">{botStatus?.connectedBots ?? 0}</span>
+              <Bot className="w-5 h-5" style={{color: '#ff00ff'}} />
+              <span className="text-2xl font-['Orbitron'] font-bold" style={{color: '#ff00ff'}}>{botStatus?.connectedBots ?? 0}</span>
             </div>
-            <div className="text-sm text-zinc-400">Virtual Bots</div>
+            <div className="text-sm text-muted-foreground font-['Rajdhani']">Virtual Bots</div>
           </Card>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Bot Control */}
-          <Card className="bg-zinc-900 border-zinc-800 p-6">
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <Bot className="w-5 h-5 text-purple-400" />
-              Virtual Bot Control
-            </h2>
+        {/* Tabs */}
+        <Tabs defaultValue="bots" className="space-y-6">
+          <TabsList className="neon-box">
+            <TabsTrigger value="bots" className="font-['Orbitron']">
+              <Bot className="w-4 h-4 mr-2" />
+              Bot Control
+            </TabsTrigger>
+            <TabsTrigger value="agents" className="font-['Orbitron']">
+              <Settings className="w-4 h-4 mr-2" />
+              Agent Management
+            </TabsTrigger>
+            <TabsTrigger value="theme" className="font-['Orbitron']">
+              <Palette className="w-4 h-4 mr-2" />
+              Theme Settings
+            </TabsTrigger>
+          </TabsList>
 
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm text-zinc-400 mb-2 block">Spawn Single Bot</label>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Bot nickname"
-                    value={botName}
-                    onChange={(e) => setBotName(e.target.value)}
-                    className="bg-zinc-800 border-zinc-700"
-                  />
+          {/* Bot Control Tab */}
+          <TabsContent value="bots" className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <Card className="cyber-card p-6">
+                <h2 className="text-xl font-['Orbitron'] font-bold mb-4 flex items-center gap-2 text-primary">
+                  <Bot className="w-5 h-5" />
+                  Virtual Bot Control
+                </h2>
+
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-sm text-muted-foreground mb-2 block font-['Rajdhani']">Spawn Single Bot</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Bot nickname"
+                        value={botName}
+                        onChange={(e) => setBotName(e.target.value)}
+                        className="neon-box bg-black/50 border-primary/50 text-foreground"
+                      />
+                      <Button
+                        onClick={() => {
+                          if (!botName.trim()) {
+                            toast.error("Please enter a bot name");
+                            return;
+                          }
+                          spawnBotMutation.mutate({ nickname: botName });
+                          setBotName("");
+                        }}
+                        disabled={spawnBotMutation.isPending}
+                        className="cyber-button"
+                      >
+                        {spawnBotMutation.isPending ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Plus className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-primary/30 pt-4">
+                    <Label className="text-sm text-muted-foreground mb-2 block font-['Rajdhani']">Spawn Multiple Bots</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        min="1"
+                        max="20"
+                        value={spawnCount}
+                        onChange={(e) => setSpawnCount(parseInt(e.target.value) || 1)}
+                        className="neon-box bg-black/50 border-primary/50 text-foreground"
+                      />
+                      <Button
+                        onClick={handleSpawnMultipleBots}
+                        disabled={spawnBotMutation.isPending}
+                        className="cyber-button"
+                      >
+                        Spawn {spawnCount} Bots
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-primary/30 pt-4">
+                    <h3 className="text-sm font-['Orbitron'] font-bold mb-2 text-primary">Connected Bots</h3>
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {botStatus?.connectedBots && botStatus.connectedBots > 0 ? (
+                        <div className="p-2 neon-box rounded">
+                          <span className="text-sm font-['Rajdhani']">{botStatus.connectedBots} bot(s) connected</span>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground font-['Rajdhani']">No bots connected</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="cyber-card p-6">
+                <h2 className="text-xl font-['Orbitron'] font-bold mb-4 flex items-center gap-2" style={{color: '#00ffff'}}>
+                  <BarChart3 className="w-5 h-5" />
+                  Game Control
+                </h2>
+
+                <div className="space-y-4">
                   <Button
                     onClick={() => {
-                      if (!botName.trim()) {
-                        toast.error("Please enter a bot name");
-                        return;
-                      }
-                      spawnBotMutation.mutate({ nickname: botName });
-                      setBotName("");
+                      refetchStats();
+                      refetchAgents();
+                      refetchBotStatus();
                     }}
-                    disabled={spawnBotMutation.isPending}
+                    className="w-full cyber-button"
+                    style={{borderColor: '#00ffff', color: '#00ffff'}}
                   >
-                    {spawnBotMutation.isPending ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Plus className="w-4 h-4" />
-                    )}
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Refresh All Data
                   </Button>
-                </div>
-              </div>
 
-              <div className="border-t border-zinc-800 pt-4">
-                <label className="text-sm text-zinc-400 mb-2 block">Spawn Multiple Bots</label>
-                <div className="flex gap-2">
-                  <Input
-                    type="number"
-                    min="1"
-                    max="20"
-                    value={spawnCount}
-                    onChange={(e) => setSpawnCount(parseInt(e.target.value) || 1)}
-                    className="bg-zinc-800 border-zinc-700 w-24"
-                  />
                   <Button
-                    onClick={handleSpawnMultipleBots}
-                    disabled={spawnBotMutation.isPending}
-                    className="flex-1"
+                    onClick={() => {
+                      if (confirm("Are you sure you want to reset the game? This will delete all rounds, questions, and votes (but keep agents).")) {
+                        resetGameMutation.mutate();
+                      }
+                    }}
+                    disabled={resetGameMutation.isPending}
+                    className="w-full cyber-button"
+                    style={{borderColor: '#ff0066', color: '#ff0066'}}
                   >
-                    {spawnBotMutation.isPending ? (
-                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    {resetGameMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     ) : (
-                      <Plus className="w-4 h-4 mr-2" />
+                      <Trash2 className="w-4 h-4 mr-2" />
                     )}
-                    Spawn {spawnCount} Bots
+                    Reset Game Data
                   </Button>
                 </div>
-              </div>
-
-              <div className="text-sm text-zinc-500 bg-zinc-800/50 p-3 rounded">
-                💡 Virtual bots will automatically participate in the game: answering questions, making choices, and commenting.
-              </div>
+              </Card>
             </div>
-          </Card>
+          </TabsContent>
 
-          {/* Game Control */}
-          <Card className="bg-zinc-900 border-zinc-800 p-6">
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <RefreshCw className="w-5 h-5 text-orange-400" />
-              Game Control
-            </h2>
+          {/* Agent Management Tab */}
+          <TabsContent value="agents">
+            <Card className="cyber-card p-6">
+              <h2 className="text-xl font-['Orbitron'] font-bold mb-4 flex items-center gap-2 text-primary">
+                <Bot className="w-5 h-5" />
+                All Agents ({agents?.length ?? 0})
+              </h2>
 
-            <div className="space-y-4">
-              <Button
-                variant="outline"
-                className="w-full justify-start"
-                onClick={() => {
-                  refetchStats();
-                  refetchAgents();
-                  refetchBotStatus();
-                  toast.success("Refreshed!");
-                }}
-              >
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Refresh All Data
-              </Button>
-
-              <Button
-                variant="destructive"
-                className="w-full justify-start"
-                onClick={() => {
-                  if (confirm("Are you sure you want to reset the game? This will delete all rounds, questions, and votes (but keep agents).")) {
-                    resetGameMutation.mutate();
-                  }
-                }}
-                disabled={resetGameMutation.isPending}
-              >
-                {resetGameMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Trash2 className="w-4 h-4 mr-2" />
-                )}
-                Reset Game Data
-              </Button>
-
-              <div className="text-sm text-zinc-500 bg-zinc-800/50 p-3 rounded">
-                ⚠️ Reset will clear all game history but keep registered agents.
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        {/* Agent List */}
-        <Card className="bg-zinc-900 border-zinc-800 p-6 mt-8">
-          <h2 className="text-xl font-bold mb-4">All Agents</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-zinc-800 text-left">
-                  <th className="pb-3 text-sm font-medium text-zinc-400">ID</th>
-                  <th className="pb-3 text-sm font-medium text-zinc-400">Nickname</th>
-                  <th className="pb-3 text-sm font-medium text-zinc-400">Model</th>
-                  <th className="pb-3 text-sm font-medium text-zinc-400">Score</th>
-                  <th className="pb-3 text-sm font-medium text-zinc-400">W/L</th>
-                  <th className="pb-3 text-sm font-medium text-zinc-400">Status</th>
-                  <th className="pb-3 text-sm font-medium text-zinc-400">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {agents?.map((agent) => (
-                  <tr key={agent.id} className="border-b border-zinc-800/50">
-                    <td className="py-3 text-sm">{agent.id}</td>
-                    <td className="py-3 text-sm font-medium">{agent.nickname}</td>
-                    <td className="py-3 text-sm text-zinc-400">{agent.aiModel}</td>
-                    <td className="py-3 text-sm text-green-400">{agent.score}</td>
-                    <td className="py-3 text-sm text-zinc-400">{agent.wins}/{agent.losses}</td>
-                    <td className="py-3">
-                      <span className={`text-xs px-2 py-1 rounded ${agent.isConnected ? 'bg-green-500/20 text-green-400' : 'bg-zinc-700 text-zinc-400'}`}>
-                        {agent.isConnected ? 'Connected' : 'Offline'}
-                      </span>
-                    </td>
-                    <td className="py-3">
-                      <div className="flex gap-2">
-                        {agent.aiModel === 'virtual-bot' && agent.isConnected && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => removeBotMutation.mutate({ agentId: agent.id })}
-                            disabled={removeBotMutation.isPending}
-                          >
-                            Disconnect
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => {
-                            if (confirm(`Delete agent ${agent.nickname}?`)) {
-                              deleteAgentMutation.mutate({ agentId: agent.id });
-                            }
-                          }}
-                          disabled={deleteAgentMutation.isPending}
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {agents && agents.length > 0 ? (
+                  agents.map((agent: any) => (
+                    <div key={agent.id} className="flex items-center justify-between p-3 neon-box rounded">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3">
+                          <span className="font-['Orbitron'] font-bold text-primary">{agent.nickname}</span>
+                          {agent.isConnected && (
+                            <span className="text-xs px-2 py-1 rounded neon-box" style={{borderColor: '#00ff00', color: '#00ff00'}}>
+                              ONLINE
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-sm text-muted-foreground font-['Rajdhani'] mt-1">
+                          Score: {agent.score} | Level: {agent.level} | Wins: {agent.wins} | Losses: {agent.losses}
+                        </div>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          if (confirm(`Delete agent "${agent.nickname}"?`)) {
+                            deleteAgentMutation.mutate({ agentId: agent.id });
+                          }
+                        }}
+                        className="text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-center text-muted-foreground py-8 font-['Rajdhani']">No agents registered yet</p>
+                )}
+              </div>
+            </Card>
+          </TabsContent>
+
+          {/* Theme Settings Tab */}
+          <TabsContent value="theme">
+            <Card className="cyber-card p-6">
+              <h2 className="text-xl font-['Orbitron'] font-bold mb-6 flex items-center gap-2 text-primary">
+                <Palette className="w-5 h-5" />
+                Frontend Theme Settings
+              </h2>
+
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div>
+                    <Label className="text-sm font-['Rajdhani'] mb-2 block">Primary Color (Neon Green)</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="color"
+                        value={primaryColor}
+                        onChange={(e) => setPrimaryColor(e.target.value)}
+                        className="w-20 h-10 cursor-pointer"
+                      />
+                      <Input
+                        type="text"
+                        value={primaryColor}
+                        onChange={(e) => setPrimaryColor(e.target.value)}
+                        className="neon-box bg-black/50 border-primary/50 text-foreground"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-['Rajdhani'] mb-2 block">Secondary Color (Cyan)</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="color"
+                        value={secondaryColor}
+                        onChange={(e) => setSecondaryColor(e.target.value)}
+                        className="w-20 h-10 cursor-pointer"
+                      />
+                      <Input
+                        type="text"
+                        value={secondaryColor}
+                        onChange={(e) => setSecondaryColor(e.target.value)}
+                        className="neon-box bg-black/50 border-primary/50 text-foreground"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-['Rajdhani'] mb-2 block">Accent Color (Pink)</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="color"
+                        value={accentColor}
+                        onChange={(e) => setAccentColor(e.target.value)}
+                        className="w-20 h-10 cursor-pointer"
+                      />
+                      <Input
+                        type="text"
+                        value={accentColor}
+                        onChange={(e) => setAccentColor(e.target.value)}
+                        className="neon-box bg-black/50 border-primary/50 text-foreground"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-primary/30 pt-6">
+                  <h3 className="text-lg font-['Orbitron'] font-bold mb-4 text-primary">Preview</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="p-4 rounded" style={{backgroundColor: primaryColor, color: '#000'}}>
+                      <p className="font-['Orbitron'] font-bold">Primary Color</p>
+                      <p className="text-sm font-['Rajdhani']">Main accent color</p>
+                    </div>
+                    <div className="p-4 rounded" style={{backgroundColor: secondaryColor, color: '#000'}}>
+                      <p className="font-['Orbitron'] font-bold">Secondary Color</p>
+                      <p className="text-sm font-['Rajdhani']">Secondary accent</p>
+                    </div>
+                    <div className="p-4 rounded" style={{backgroundColor: accentColor, color: '#fff'}}>
+                      <p className="font-['Orbitron'] font-bold">Accent Color</p>
+                      <p className="text-sm font-['Rajdhani']">Highlight color</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-primary/30 pt-6 flex gap-4">
+                  <Button onClick={applyTheme} className="cyber-button flex-1">
+                    Apply Theme
+                  </Button>
+                  <Button onClick={resetTheme} className="cyber-button" style={{borderColor: '#ff0066', color: '#ff0066'}}>
+                    Reset to Default
+                  </Button>
+                </div>
+
+                <div className="border-t border-primary/30 pt-6">
+                  <p className="text-sm text-muted-foreground font-['Rajdhani']">
+                    ℹ️ Theme settings are saved to your browser's local storage. Changes will persist across sessions.
+                  </p>
+                </div>
+              </div>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
