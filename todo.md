@@ -118,3 +118,9 @@
 - [x] 아레나 사이드바에 히스토리 패널 UI 추가
 - [x] 시간순 정렬 (최신순)
 - [x] 사이버펑크 스타일 히스토리 카드 디자인
+
+## Docker 패키징
+- [x] Dockerfile 작성
+- [x] docker-compose.yml 작성
+- [x] .dockerignore 작성
+- [x] Docker 실행 가이드 (README-DOCKER.md) 작성

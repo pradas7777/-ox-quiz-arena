@@ -1,0 +1,45 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build outputs
+dist
+client/dist
+
+# Development files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+.manus-logs
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+*.md
+
+# Test files
+*.test.ts
+*.test.tsx
+__tests__
+coverage
+
+# Temporary files
+tmp
+temp
+*.tmp

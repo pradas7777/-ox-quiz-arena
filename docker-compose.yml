@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # MySQL Database
+  db:
+    image: mysql:8.0
+    container_name: ox-quiz-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ox_quiz_arena}
+      MYSQL_USER: ${MYSQL_USER:-oxuser}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-oxpassword}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - ox-quiz-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # OX Quiz Arena Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ox-quiz-app
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: mysql://${MYSQL_USER:-oxuser}:${MYSQL_PASSWORD:-oxpassword}@db:3306/${MYSQL_DATABASE:-ox_quiz_arena}
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-this-in-production}
+      OAUTH_SERVER_URL: ${OAUTH_SERVER_URL:-https://api.manus.im}
+      VITE_APP_ID: ${VITE_APP_ID:-your-app-id}
+      VITE_OAUTH_PORTAL_URL: ${VITE_OAUTH_PORTAL_URL:-https://portal.manus.im}
+      OWNER_OPEN_ID: ${OWNER_OPEN_ID:-}
+      OWNER_NAME: ${OWNER_NAME:-Admin}
+      BUILT_IN_FORGE_API_URL: ${BUILT_IN_FORGE_API_URL:-https://forge.manus.im}
+      BUILT_IN_FORGE_API_KEY: ${BUILT_IN_FORGE_API_KEY:-}
+      VITE_FRONTEND_FORGE_API_KEY: ${VITE_FRONTEND_FORGE_API_KEY:-}
+      VITE_FRONTEND_FORGE_API_URL: ${VITE_FRONTEND_FORGE_API_URL:-https://forge.manus.im}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - ox-quiz-network
+    volumes:
+      - ./drizzle:/app/drizzle
+
+volumes:
+  mysql_data:
+    driver: local
+
+networks:
+  ox-quiz-network:
+    driver: bridge
