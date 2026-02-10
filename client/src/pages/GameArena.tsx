@@ -349,6 +349,106 @@ export default function GameArena() {
         ctx.font = '10px Rajdhani';
         ctx.fillStyle = agent.color || '#94f814';
         ctx.fillText(`${agent.score}pts`, newX, newY + agentSize + 15);
+
+        // Victory animation (pulse effect for winners)
+        if (gameState.phase === 'result' && gameState.majorityChoice && agent.choice === gameState.majorityChoice) {
+          const pulseTime = Date.now() % 1000;
+          const pulseScale = 1 + Math.sin(pulseTime / 1000 * Math.PI * 2) * 0.2;
+          
+          ctx.strokeStyle = agent.color || '#94f814';
+          ctx.lineWidth = 3;
+          ctx.shadowColor = agent.color || '#94f814';
+          ctx.shadowBlur = 20;
+          ctx.beginPath();
+          ctx.arc(newX, newY, (agentSize / 2) * pulseScale, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+
+          // Particle effect
+          const particleCount = 3;
+          for (let i = 0; i < particleCount; i++) {
+            const angle = (pulseTime / 1000 * Math.PI * 2) + (i * Math.PI * 2 / particleCount);
+            const distance = 30 + Math.sin(pulseTime / 500) * 10;
+            const px = newX + Math.cos(angle) * distance;
+            const py = newY + Math.sin(angle) * distance;
+            
+            ctx.fillStyle = agent.color || '#94f814';
+            ctx.shadowColor = agent.color || '#94f814';
+            ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.arc(px, py, 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+          }
+        }
+
+        // Draw comment speech bubble
+        if (agent.comment && gameState.phase === 'commenting') {
+          const bubblePadding = 10;
+          const bubbleMaxWidth = 200;
+          const bubbleLineHeight = 16;
+          
+          // Measure text and wrap
+          ctx.font = '12px Rajdhani';
+          const words = agent.comment.split(' ');
+          const lines: string[] = [];
+          let currentLine = '';
+          
+          words.forEach(word => {
+            const testLine = currentLine + (currentLine ? ' ' : '') + word;
+            const metrics = ctx.measureText(testLine);
+            if (metrics.width > bubbleMaxWidth - bubblePadding * 2 && currentLine) {
+              lines.push(currentLine);
+              currentLine = word;
+            } else {
+              currentLine = testLine;
+            }
+          });
+          if (currentLine) lines.push(currentLine);
+
+          // Limit to 3 lines
+          const displayLines = lines.slice(0, 3);
+          if (lines.length > 3) {
+            displayLines[2] = displayLines[2].substring(0, displayLines[2].length - 3) + '...';
+          }
+
+          const bubbleWidth = Math.max(...displayLines.map(line => ctx.measureText(line).width)) + bubblePadding * 2;
+          const bubbleHeight = displayLines.length * bubbleLineHeight + bubblePadding * 2;
+          const bubbleX = newX - bubbleWidth / 2;
+          const bubbleY = newY - agentSize - bubbleHeight - 20;
+
+          // Draw bubble background
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+          ctx.strokeStyle = agent.color || '#94f814';
+          ctx.lineWidth = 2;
+          ctx.shadowColor = agent.color || '#94f814';
+          ctx.shadowBlur = 10;
+          
+          ctx.beginPath();
+          ctx.roundRect(bubbleX, bubbleY, bubbleWidth, bubbleHeight, 8);
+          ctx.fill();
+          ctx.stroke();
+          
+          // Draw bubble tail
+          ctx.beginPath();
+          ctx.moveTo(newX - 10, bubbleY + bubbleHeight);
+          ctx.lineTo(newX, newY - agentSize - 5);
+          ctx.lineTo(newX + 10, bubbleY + bubbleHeight);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          
+          ctx.shadowBlur = 0;
+
+          // Draw text
+          ctx.fillStyle = '#fff';
+          ctx.font = '12px Rajdhani';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'top';
+          displayLines.forEach((line, idx) => {
+            ctx.fillText(line, bubbleX + bubblePadding, bubbleY + bubblePadding + idx * bubbleLineHeight);
+          });
+        }
       });
 
       animationFrameRef.current = requestAnimationFrame(animate);
