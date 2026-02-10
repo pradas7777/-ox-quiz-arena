@@ -3,7 +3,7 @@ import { Server, Socket } from "socket.io";
 import { GameEngine } from "./GameEngine";
 import * as db from "./db";
 
-export function setupSocketServer(httpServer: HTTPServer) {
+export async function setupSocketServer(httpServer: HTTPServer) {
   const io = new Server(httpServer, {
     cors: {
       origin: "*",
@@ -15,7 +15,7 @@ export function setupSocketServer(httpServer: HTTPServer) {
   const gameEngine = new GameEngine(io);
   
   // Initialize game engine
-  gameEngine.initialize().catch(err => {
+  await gameEngine.initialize().catch(err => {
     console.error('[SocketServer] Failed to initialize game engine:', err);
   });
 
@@ -95,6 +95,32 @@ export function setupSocketServer(httpServer: HTTPServer) {
       console.log(`[SocketServer] Agent ${agent.nickname} disconnected`);
       gameEngine.handleAgentDisconnect(socket.id);
     });
+  });
+
+  // Spectator namespace (no authentication required)
+  const spectatorNamespace = io.of('/spectator');
+  
+  spectatorNamespace.on('connection', (socket: Socket) => {
+    console.log('[SocketServer] Spectator connected');
+
+    // Send current game state immediately
+    const currentState = gameEngine.getGameState();
+    socket.emit('GAME_STATE', currentState);
+
+    // Handle request for game state
+    socket.on('REQUEST_GAME_STATE', () => {
+      const state = gameEngine.getGameState();
+      socket.emit('GAME_STATE', state);
+    });
+
+    socket.on('disconnect', () => {
+      console.log('[SocketServer] Spectator disconnected');
+    });
+  });
+
+  // Broadcast game state updates to spectators
+  gameEngine.on('stateUpdate', (state: any) => {
+    spectatorNamespace.emit('GAME_STATE', state);
   });
 
   // Heartbeat timeout checker (runs every 30 seconds)

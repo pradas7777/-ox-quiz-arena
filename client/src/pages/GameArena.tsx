@@ -62,12 +62,12 @@ export default function GameArena() {
 
   const voteMutation = trpc.question.vote.useMutation();
 
-  // Connect to Socket.IO server
+  // Connect to Socket.IO server (spectator namespace)
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
     
-    const socket = io(`${protocol}//${host}`, {
+    const socket = io(`${protocol}//${host}/spectator`, {
       path: '/socket.io/',
       transports: ['websocket', 'polling'],
     });
@@ -77,18 +77,23 @@ export default function GameArena() {
     socket.on('connect', () => {
       console.log('Connected to game server');
       toast.success('Connected to game server');
+      // Request current game state
+      socket.emit('REQUEST_GAME_STATE');
     });
 
     socket.on('GAME_STATE', (state: GameState) => {
+      console.log('Received GAME_STATE:', state);
       // Assign characters to agents
       state.agents = state.agents.map(agent => ({
         ...agent,
         ...getAgentCharacter(agent.id),
       }));
+      console.log('Agents with characters:', state.agents);
       setGameState(state);
     });
 
     socket.on('AGENT_JOINED', (data: { agent: Agent }) => {
+      console.log('Agent joined:', data.agent);
       const agentWithCharacter = {
         ...data.agent,
         ...getAgentCharacter(data.agent.id),

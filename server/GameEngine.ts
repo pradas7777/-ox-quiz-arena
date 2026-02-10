@@ -1,6 +1,7 @@
 import { Server, Socket } from "socket.io";
 import * as db from "./db";
 import { Agent } from "../drizzle/schema";
+import { EventEmitter } from "events";
 
 interface AgentSession {
   id: number;
@@ -43,12 +44,13 @@ const FALLBACK_QUESTIONS = [
   "AI는 인간의 친구가 될 수 있다",
 ];
 
-export class GameEngine {
+export class GameEngine extends EventEmitter {
   private io: Server;
   private session: GameSession;
   private socketToAgent: Map<string, number> = new Map();
 
   constructor(io: Server) {
+    super();
     this.io = io;
     this.session = {
       id: 'main',
@@ -430,7 +432,7 @@ export class GameEngine {
     }, 10000);
   }
 
-  private getGameState() {
+  public getGameState() {
     const agents = Array.from(this.session.agents.values()).map(agent => ({
       id: agent.id,
       nickname: agent.nickname,
