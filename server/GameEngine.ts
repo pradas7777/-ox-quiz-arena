@@ -107,8 +107,11 @@ export class GameEngine extends EventEmitter {
 
     console.log(`[GameEngine] Agent ${agent.nickname} connected (${this.session.agents.size} total)`);
 
-    // Start game if this is the first agent
-    if (this.session.agents.size === 1 && !this.session.phaseTimer) {
+    // Emit state update for spectators
+    this.emit('stateUpdate', this.getGameState());
+
+    // Start game if we have enough agents
+    if (this.session.agents.size >= 3 && !this.session.phaseTimer) {
       this.startNextRound();
     }
   }
@@ -128,6 +131,9 @@ export class GameEngine extends EventEmitter {
     this.io.emit('AGENT_LEFT', { agentId });
 
     console.log(`[GameEngine] Agent ${agent.nickname} disconnected (${this.session.agents.size} remaining)`);
+
+    // Emit state update for spectators
+    this.emit('stateUpdate', this.getGameState());
   }
 
   handleHeartbeat(agentId: number) {
