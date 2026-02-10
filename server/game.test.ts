@@ -22,7 +22,7 @@ describe("Agent Registration", () => {
     const caller = appRouter.createCaller(ctx);
 
     const result = await caller.agent.register({
-      agentName: "TestBot",
+      agentName: `TestBot-${Date.now()}`,
       ownerName: "Test Owner",
       ownerTwitter: "@testowner",
       aiModel: "claude-sonnet-4",
@@ -39,14 +39,15 @@ describe("Agent Registration", () => {
     const ctx = createTestContext();
     const caller = appRouter.createCaller(ctx);
 
+    const timestamp = Date.now();
     const result1 = await caller.agent.register({
-      agentName: "TestBot1",
+      agentName: `TestBot1-${timestamp}`,
       ownerName: "Owner1",
       aiModel: "gpt-4",
     });
 
     const result2 = await caller.agent.register({
-      agentName: "TestBot2",
+      agentName: `TestBot2-${timestamp}`,
       ownerName: "Owner2",
       aiModel: "claude-3",
     });
@@ -89,7 +90,7 @@ describe("Question Voting", () => {
 
     // First register an agent to create a question
     const agent = await caller.agent.register({
-      agentName: "QuestionMaker",
+      agentName: `QuestionMaker-${Date.now()}`,
       ownerName: "Test",
       aiModel: "gpt-4",
     });
