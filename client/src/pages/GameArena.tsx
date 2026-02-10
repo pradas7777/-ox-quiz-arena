@@ -59,6 +59,18 @@ export default function GameArena() {
   const [timer, setTimer] = useState<number>(0);
   const [agentLeaderboard, setAgentLeaderboard] = useState<any[]>([]);
   const [questionLeaderboard, setQuestionLeaderboard] = useState<any[]>([]);
+  const [roundHistory, setRoundHistory] = useState<any[]>([]);
+
+  // Fetch round history
+  const { data: historyData } = trpc.game.getRoundHistory.useQuery(undefined, {
+    refetchInterval: 10000, // Refresh every 10 seconds
+  });
+
+  useEffect(() => {
+    if (historyData) {
+      setRoundHistory(historyData);
+    }
+  }, [historyData]);
 
   const voteMutation = trpc.question.vote.useMutation();
 
@@ -627,30 +639,35 @@ export default function GameArena() {
               </div>
             </Card>
 
-            {/* Question Leaderboard */}
+            {/* Round History */}
             <Card className="cyber-card p-4">
               <div className="flex items-center gap-2 mb-4">
-                <Trophy className="w-5 h-5" style={{color: '#ff00ff'}} />
-                <h3 className="font-['Orbitron'] font-bold" style={{color: '#ff00ff'}}>Top Questions</h3>
+                <Clock className="w-5 h-5" style={{color: '#ffff00'}} />
+                <h3 className="font-['Orbitron'] font-bold" style={{color: '#ffff00'}}>Round History</h3>
               </div>
-              <div className="space-y-2">
-                {questionLeaderboard.slice(0, 5).map((q, idx) => (
-                  <div key={q.id} className="p-2 neon-box rounded">
-                    <div className="flex items-center gap-2 mb-1">
+              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                {roundHistory.map((round, idx) => (
+                  <div key={round.roundNumber} className="p-3 neon-box rounded">
+                    <div className="flex items-center justify-between mb-2">
                       <span className="font-['Orbitron'] font-bold text-xs" style={{color: NEON_COLORS[idx % NEON_COLORS.length]}}>
-                        #{idx + 1}
+                        Round {round.roundNumber}
                       </span>
-                      <span className="text-xs font-['Rajdhani'] text-muted-foreground">{q.topic}</span>
+                      <span className="text-xs font-['Rajdhani'] text-muted-foreground">
+                        {new Date(round.createdAt).toLocaleTimeString()}
+                      </span>
                     </div>
-                    <p className="text-sm font-['Rajdhani'] truncate">{q.questionText}</p>
-                    <div className="flex gap-2 mt-1 text-xs font-['Rajdhani']">
-                      <span style={{color: '#00ff00'}}>👍 {q.likes}</span>
-                      <span style={{color: '#ff0066'}}>👎 {q.dislikes}</span>
+                    <p className="text-sm font-['Rajdhani'] mb-2">{round.questionText}</p>
+                    <div className="flex items-center justify-between text-xs font-['Rajdhani']">
+                      <span className="text-muted-foreground">by {round.questionMakerNickname}</span>
+                      <div className="flex gap-2">
+                        <span style={{color: round.majorityChoice === 'O' ? '#00ffff' : '#666'}}>O: {round.oCount}</span>
+                        <span style={{color: round.majorityChoice === 'X' ? '#ff00ff' : '#666'}}>X: {round.xCount}</span>
+                      </div>
                     </div>
                   </div>
                 ))}
-                {questionLeaderboard.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-4 font-['Rajdhani']">No data yet</p>
+                {roundHistory.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4 font-['Rajdhani']">No rounds yet</p>
                 )}
               </div>
             </Card>

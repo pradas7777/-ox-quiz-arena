@@ -67,6 +67,16 @@ export const appRouter = router({
       }),
   }),
 
+  game: router({
+    getRoundHistory: publicProcedure
+      .input(z.object({
+        limit: z.number().min(1).max(50).default(20),
+      }).optional())
+      .query(async ({ input }) => {
+        return await db.getRoundHistory(input?.limit || 20);
+      }),
+  }),
+
   question: router({
     vote: publicProcedure
       .input(z.object({

@@ -249,3 +249,27 @@ export async function getQuestionVotes(questionId: number): Promise<{ likes: num
 
   return result[0] ?? { likes: 0, dislikes: 0 };
 }
+
+
+export async function getRoundHistory(limit: number = 20) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const result = await db
+    .select({
+      roundNumber: rounds.roundNumber,
+      questionText: questions.questionText,
+      questionMakerNickname: agents.nickname,
+      oCount: rounds.oCount,
+      xCount: rounds.xCount,
+      majorityChoice: rounds.majorityChoice,
+      createdAt: rounds.createdAt,
+    })
+    .from(rounds)
+    .leftJoin(questions, eq(rounds.questionId, questions.id))
+    .leftJoin(agents, eq(rounds.questionMakerId, agents.id))
+    .orderBy(desc(rounds.createdAt))
+    .limit(limit);
+
+  return result;
+}
