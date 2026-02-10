@@ -292,23 +292,25 @@ export default function GameArena() {
 
       // Update and draw agents
       gameState.agents.forEach(agent => {
-        // Calculate target position based on choice
-        let targetX = agent.targetX || canvas.width / 2;
-        let targetY = agent.targetY || canvas.height / 2;
-
-        if (agent.choice === 'O') {
-          // Move to O zone (left side)
-          targetX = Math.random() * (midX - 100) + 50;
-          targetY = Math.random() * (canvas.height - 100) + 50;
-        } else if (agent.choice === 'X') {
-          // Move to X zone (right side)
-          targetX = Math.random() * (midX - 100) + midX + 50;
-          targetY = Math.random() * (canvas.height - 100) + 50;
-        } else {
-          // No choice yet - stay in center
-          targetX = midX + (Math.random() - 0.5) * 200;
-          targetY = canvas.height / 2 + (Math.random() - 0.5) * 200;
+        // Calculate target position based on choice (only if not set)
+        if (!agent.targetX || !agent.targetY) {
+          if (agent.choice === 'O') {
+            // Move to O zone (left side) - random position once
+            agent.targetX = Math.random() * (midX - 100) + 50;
+            agent.targetY = Math.random() * (canvas.height - 100) + 50;
+          } else if (agent.choice === 'X') {
+            // Move to X zone (right side) - random position once
+            agent.targetX = Math.random() * (midX - 100) + midX + 50;
+            agent.targetY = Math.random() * (canvas.height - 100) + 50;
+          } else {
+            // No choice yet - center position
+            agent.targetX = midX;
+            agent.targetY = canvas.height / 2;
+          }
         }
+
+        const targetX = agent.targetX;
+        const targetY = agent.targetY;
 
         // Smooth movement
         const currentX = agent.x || targetX;

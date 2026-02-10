@@ -264,10 +264,10 @@ export class GameEngine extends EventEmitter {
 
     console.log(`[GameEngine] Answering phase started: ${this.session.currentQuestion.text}`);
 
-    // Set timeout for answering
+    // Set timeout for answering (10 seconds)
     this.session.phaseTimer = setTimeout(() => {
       this.startCommentingPhase();
-    }, 15000);
+    }, 10000);
   }
 
   handleMove(agentId: number, choice: 'O' | 'X') {
@@ -307,7 +307,7 @@ export class GameEngine extends EventEmitter {
 
     console.log('[GameEngine] Commenting phase started');
 
-    // Set timeout for commenting
+    // Set timeout for commenting (10 seconds)
     this.session.phaseTimer = setTimeout(() => {
       this.calculateResult();
     }, 10000);
@@ -416,10 +416,10 @@ export class GameEngine extends EventEmitter {
 
     console.log(`[GameEngine] Result: O=${oCount}, X=${xCount}, Majority=${majorityChoice}`);
 
-    // Start voting phase
+    // Show result for 10 seconds
     this.session.phaseTimer = setTimeout(() => {
       this.startVotingPhase();
-    }, 5000);
+    }, 10000);
   }
 
   private startVotingPhase() {
@@ -432,7 +432,7 @@ export class GameEngine extends EventEmitter {
 
     console.log('[GameEngine] Voting phase started');
 
-    // Set timeout for voting
+    // Set timeout for voting (10 seconds)
     this.session.phaseTimer = setTimeout(() => {
       this.startNextRound();
     }, 10000);
