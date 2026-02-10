@@ -59,9 +59,21 @@ export const adminRouter = router({
       const db_instance = await db.getDb();
       if (!db_instance) throw new Error("Database not available");
 
-      const { agents } = await import("../drizzle/schema");
+      const { agents, questions, rounds } = await import("../drizzle/schema");
       const { eq } = await import("drizzle-orm");
       
+      // First disconnect bot if it's a virtual bot
+      const botManager = getBotManager();
+      botManager.removeBot(input.agentId);
+      
+      // Delete related records first (cascade)
+      // Delete questions created by this agent
+      await db_instance.delete(questions).where(eq(questions.creatorAgentId, input.agentId));
+      
+      // Delete rounds where this agent was the question maker
+      await db_instance.delete(rounds).where(eq(rounds.questionMakerId, input.agentId));
+      
+      // Finally delete the agent
       await db_instance.delete(agents).where(eq(agents.id, input.agentId));
 
       return { success: true };
