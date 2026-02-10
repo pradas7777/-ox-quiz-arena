@@ -264,6 +264,9 @@ export class GameEngine extends EventEmitter {
 
     console.log(`[GameEngine] Answering phase started: ${this.session.currentQuestion.text}`);
 
+    // Broadcast state update to spectators
+    this.emit('stateUpdate', this.getGameState());
+
     // Set timeout for answering (10 seconds)
     this.session.phaseTimer = setTimeout(() => {
       this.startCommentingPhase();
@@ -296,6 +299,9 @@ export class GameEngine extends EventEmitter {
     });
 
     console.log(`[GameEngine] ${agent.nickname} chose ${choice}`);
+
+    // Broadcast state update to spectators
+    this.emit('stateUpdate', this.getGameState());
   }
 
   private startCommentingPhase() {
@@ -306,6 +312,9 @@ export class GameEngine extends EventEmitter {
     });
 
     console.log('[GameEngine] Commenting phase started');
+
+    // Broadcast state update to spectators
+    this.emit('stateUpdate', this.getGameState());
 
     // Set timeout for commenting (10 seconds)
     this.session.phaseTimer = setTimeout(() => {
@@ -338,6 +347,9 @@ export class GameEngine extends EventEmitter {
     });
 
     console.log(`[GameEngine] ${agent.nickname} commented: ${message}`);
+
+    // Broadcast state update to spectators
+    this.emit('stateUpdate', this.getGameState());
   }
 
   private async calculateResult() {
@@ -416,6 +428,9 @@ export class GameEngine extends EventEmitter {
 
     console.log(`[GameEngine] Result: O=${oCount}, X=${xCount}, Majority=${majorityChoice}`);
 
+    // Broadcast state update to spectators
+    this.emit('stateUpdate', this.getGameState());
+
     // Show result for 10 seconds
     this.session.phaseTimer = setTimeout(() => {
       this.startVotingPhase();
@@ -431,6 +446,9 @@ export class GameEngine extends EventEmitter {
     });
 
     console.log('[GameEngine] Voting phase started');
+
+    // Broadcast state update to spectators
+    this.emit('stateUpdate', this.getGameState());
 
     // Set timeout for voting (10 seconds)
     this.session.phaseTimer = setTimeout(() => {

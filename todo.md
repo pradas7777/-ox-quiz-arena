@@ -124,3 +124,8 @@
 - [x] docker-compose.yml 작성
 - [x] .dockerignore 작성
 - [x] Docker 실행 가이드 (README-DOCKER.md) 작성
+
+## 실시간 업데이트 문제 수정
+- [x] GameEngine의 모든 단계에서 stateUpdate 이벤트 발생 확인
+- [x] Spectator WebSocket 연결 상태 확인
+- [x] 게임 상탌 브로드캐스트 로직 강화 (모든 단계에 emit 추가)
