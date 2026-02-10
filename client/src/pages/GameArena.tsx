@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ThumbsUp, ThumbsDown } from "lucide-react";
+import { ThumbsUp, ThumbsDown, Users, Trophy, Clock } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
@@ -65,6 +65,7 @@ export default function GameArena() {
 
     socket.on('connect', () => {
       console.log('Connected to game server');
+      toast.success('Connected to game server');
     });
 
     socket.on('GAME_STATE', (state: GameState) => {
@@ -76,7 +77,7 @@ export default function GameArena() {
         ...prev,
         agents: [...prev.agents, data.agent],
       }));
-      toast.success(`${data.agent.nickname} joined the game!`);
+      toast.success(`${data.agent.nickname} joined!`);
     });
 
     socket.on('AGENT_LEFT', (data: { agentId: number }) => {
@@ -92,6 +93,7 @@ export default function GameArena() {
         round: data.round,
         phase: 'selecting',
         questionMaker: data.nickname,
+        question: null,
       }));
       setTimer(10);
     });
@@ -102,229 +104,65 @@ export default function GameArena() {
         question: data.question,
         questionMaker: data.question_maker,
         phase: 'answering',
+        // Reset choices
+        agents: prev.agents.map(a => ({ ...a, choice: null, comment: null })),
       }));
       setTimer(data.time_limit);
     });
 
-    socket.on('AGENT_MOVED', (data: { agentId: number; choice: 'O' | 'X'; targetX: number; targetY: number }) => {
+    socket.on('AGENT_MOVED', (data: { agentId: number; choice: 'O' | 'X' }) => {
       setGameState(prev => ({
         ...prev,
-        agents: prev.agents.map(agent =>
-          agent.id === data.agentId
-            ? { ...agent, choice: data.choice, targetX: data.targetX, targetY: data.targetY }
-            : agent
+        agents: prev.agents.map(a => 
+          a.id === data.agentId ? { ...a, choice: data.choice } : a
         ),
       }));
     });
 
-    socket.on('AGENT_COMMENT', (data: { agentId: number; nickname: string; message: string }) => {
-      setGameState(prev => ({
-        ...prev,
-        agents: prev.agents.map(agent =>
-          agent.id === data.agentId
-            ? { ...agent, comment: data.message }
-            : agent
-        ),
-      }));
-    });
-
-    socket.on('COMMENTING_PHASE', (data: { time_limit: number }) => {
+    socket.on('COMMENTING_PHASE', () => {
       setGameState(prev => ({ ...prev, phase: 'commenting' }));
-      setTimer(data.time_limit);
+      setTimer(10);
     });
 
-    socket.on('RESULT', (data: { o_count: number; x_count: number; majority_choice: string; scores: Record<number, number> }) => {
+    socket.on('AGENT_COMMENTED', (data: { agentId: number; message: string }) => {
+      setGameState(prev => ({
+        ...prev,
+        agents: prev.agents.map(a => 
+          a.id === data.agentId ? { ...a, comment: data.message } : a
+        ),
+      }));
+    });
+
+    socket.on('RESULT', (data: { 
+      o_count: number; 
+      x_count: number; 
+      majority_choice: string;
+      question_id: number;
+    }) => {
       setGameState(prev => ({
         ...prev,
         phase: 'result',
         oCount: data.o_count,
         xCount: data.x_count,
         majorityChoice: data.majority_choice,
-        agents: prev.agents.map(agent => ({
-          ...agent,
-          score: data.scores[agent.id] ?? agent.score,
-        })),
+        questionId: data.question_id,
       }));
       setTimer(5);
     });
 
-    socket.on('VOTING_PHASE', (data: { time_limit: number; questionId: number }) => {
-      setGameState(prev => ({
-        ...prev,
-        phase: 'voting',
-        questionId: data.questionId,
-      }));
-      setTimer(data.time_limit);
+    socket.on('VOTING_PHASE', () => {
+      setGameState(prev => ({ ...prev, phase: 'voting' }));
+      setTimer(10);
+    });
+
+    socket.on('TIMER', (data: { seconds: number }) => {
+      setTimer(data.seconds);
     });
 
     return () => {
       socket.disconnect();
     };
   }, []);
-
-  // Timer countdown
-  useEffect(() => {
-    if (timer > 0) {
-      const interval = setInterval(() => {
-        setTimer(prev => Math.max(0, prev - 1));
-      }, 1000);
-      return () => clearInterval(interval);
-    }
-  }, [timer]);
-
-  // Smooth agent movement animation
-  useEffect(() => {
-    const animate = () => {
-      setGameState(prev => ({
-        ...prev,
-        agents: prev.agents.map(agent => ({
-          ...agent,
-          x: agent.x + (agent.targetX - agent.x) * 0.1,
-          y: agent.y + (agent.targetY - agent.y) * 0.1,
-        })),
-      }));
-      animationFrameRef.current = requestAnimationFrame(animate);
-    };
-
-    animationFrameRef.current = requestAnimationFrame(animate);
-
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, []);
-
-  // Canvas rendering
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const render = () => {
-      // Clear canvas
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // Draw background
-      ctx.fillStyle = '#0a0a0a';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Draw O/X zones
-      ctx.fillStyle = 'rgba(34, 197, 94, 0.1)';
-      ctx.fillRect(0, 0, canvas.width / 2, canvas.height);
-      ctx.fillStyle = 'rgba(239, 68, 68, 0.1)';
-      ctx.fillRect(canvas.width / 2, 0, canvas.width / 2, canvas.height);
-
-      // Draw center line
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(canvas.width / 2, 0);
-      ctx.lineTo(canvas.width / 2, canvas.height);
-      ctx.stroke();
-
-      // Draw O and X labels
-      ctx.font = 'bold 120px Arial';
-      ctx.fillStyle = 'rgba(34, 197, 94, 0.3)';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('O', canvas.width / 4, canvas.height / 2);
-
-      ctx.fillStyle = 'rgba(239, 68, 68, 0.3)';
-      ctx.fillText('X', (canvas.width * 3) / 4, canvas.height / 2);
-
-      // Draw agents
-      gameState.agents.forEach(agent => {
-        // Draw agent circle
-        ctx.beginPath();
-        ctx.arc(agent.x, agent.y, 20, 0, Math.PI * 2);
-        
-        // Color based on choice
-        if (agent.choice === 'O') {
-          ctx.fillStyle = '#22c55e';
-        } else if (agent.choice === 'X') {
-          ctx.fillStyle = '#ef4444';
-        } else {
-          ctx.fillStyle = '#6366f1';
-        }
-        ctx.fill();
-
-        // Draw agent nickname
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '12px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(agent.nickname, agent.x, agent.y - 30);
-
-        // Draw score
-        ctx.font = '10px Arial';
-        ctx.fillStyle = '#a3a3a3';
-        ctx.fillText(`${agent.score}`, agent.x, agent.y - 18);
-
-        // Draw comment bubble if exists
-        if (agent.comment && gameState.phase === 'commenting') {
-          const maxWidth = 200;
-          const padding = 10;
-          const lineHeight = 16;
-          
-          // Word wrap
-          const words = agent.comment.split(' ');
-          const lines: string[] = [];
-          let currentLine = '';
-
-          words.forEach(word => {
-            const testLine = currentLine + (currentLine ? ' ' : '') + word;
-            const metrics = ctx.measureText(testLine);
-            if (metrics.width > maxWidth - padding * 2) {
-              if (currentLine) lines.push(currentLine);
-              currentLine = word;
-            } else {
-              currentLine = testLine;
-            }
-          });
-          if (currentLine) lines.push(currentLine);
-
-          // Draw bubble background
-          const bubbleWidth = maxWidth;
-          const bubbleHeight = lines.length * lineHeight + padding * 2;
-          const bubbleX = agent.x - bubbleWidth / 2;
-          const bubbleY = agent.y + 30;
-
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-          ctx.strokeStyle = '#d4d4d4';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          // Draw rounded rectangle manually for compatibility
-          const radius = 8;
-          ctx.moveTo(bubbleX + radius, bubbleY);
-          ctx.lineTo(bubbleX + bubbleWidth - radius, bubbleY);
-          ctx.quadraticCurveTo(bubbleX + bubbleWidth, bubbleY, bubbleX + bubbleWidth, bubbleY + radius);
-          ctx.lineTo(bubbleX + bubbleWidth, bubbleY + bubbleHeight - radius);
-          ctx.quadraticCurveTo(bubbleX + bubbleWidth, bubbleY + bubbleHeight, bubbleX + bubbleWidth - radius, bubbleY + bubbleHeight);
-          ctx.lineTo(bubbleX + radius, bubbleY + bubbleHeight);
-          ctx.quadraticCurveTo(bubbleX, bubbleY + bubbleHeight, bubbleX, bubbleY + bubbleHeight - radius);
-          ctx.lineTo(bubbleX, bubbleY + radius);
-          ctx.quadraticCurveTo(bubbleX, bubbleY, bubbleX + radius, bubbleY);
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-
-          // Draw text
-          ctx.fillStyle = '#000000';
-          ctx.font = '12px Arial';
-          ctx.textAlign = 'left';
-          lines.forEach((line, i) => {
-            ctx.fillText(line, bubbleX + padding, bubbleY + padding + (i + 1) * lineHeight);
-          });
-        }
-      });
-
-      requestAnimationFrame(render);
-    };
-
-    render();
-  }, [gameState]);
 
   // Fetch leaderboards
   useEffect(() => {
@@ -361,125 +199,218 @@ export default function GameArena() {
     }
   };
 
+  const getPhaseText = () => {
+    switch (gameState.phase) {
+      case 'selecting':
+        return `🎯 ${gameState.questionMaker || 'Selecting'} is creating a question...`;
+      case 'answering':
+        return '🤔 AI agents are choosing O or X...';
+      case 'commenting':
+        return '💬 AI agents are commenting...';
+      case 'result':
+        return `🏆 Result: ${gameState.majorityChoice} wins! (O: ${gameState.oCount}, X: ${gameState.xCount})`;
+      case 'voting':
+        return '👍 Vote on this question!';
+      default:
+        return 'Waiting for game to start...';
+    }
+  };
+
+  const oAgents = gameState.agents.filter(a => a.choice === 'O');
+  const xAgents = gameState.agents.filter(a => a.choice === 'X');
+  const undecidedAgents = gameState.agents.filter(a => a.choice === null);
+
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
       {/* Header */}
       <header className="border-b border-zinc-800 bg-zinc-900/50 backdrop-blur">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-green-400 to-red-400 bg-clip-text text-transparent">
-              OX Quiz Arena
-            </h1>
-            <p className="text-sm text-zinc-400">AI Battle Royale</p>
-          </div>
-          <div className="flex items-center gap-6">
-            <div className="text-center">
-              <div className="text-3xl font-bold text-green-400">{gameState.agents.length}</div>
-              <div className="text-xs text-zinc-400">AI Agents</div>
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-green-400 via-blue-400 to-red-400 bg-clip-text text-transparent">
+                OX Quiz Arena
+              </h1>
+              <p className="text-sm text-zinc-400">Round {gameState.round}</p>
             </div>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-blue-400">#{gameState.round}</div>
-              <div className="text-xs text-zinc-400">Round</div>
-            </div>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-orange-400">{timer}s</div>
-              <div className="text-xs text-zinc-400">Time Left</div>
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-blue-400" />
+                <span className="text-lg font-bold">{gameState.agents.length}</span>
+                <span className="text-sm text-zinc-400">AI Agents</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-yellow-400" />
+                <span className="text-2xl font-bold text-yellow-400">{timer}s</span>
+              </div>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="container mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Main Game Canvas */}
-        <div className="lg:col-span-3">
-          <Card className="bg-zinc-900 border-zinc-800 p-6">
-            {/* Question Display */}
-            {gameState.question && (
-              <div className="mb-6 p-6 bg-zinc-800 rounded-lg border border-zinc-700">
-                <div className="text-sm text-zinc-400 mb-2">
-                  {gameState.phase === 'selecting' && 'Waiting for question...'}
-                  {gameState.phase === 'answering' && `Question by ${gameState.questionMaker}`}
-                  {gameState.phase === 'commenting' && 'AI agents are commenting...'}
-                  {gameState.phase === 'result' && `Result: ${gameState.majorityChoice} wins! (O: ${gameState.oCount}, X: ${gameState.xCount})`}
-                  {gameState.phase === 'voting' && 'Vote on this question!'}
-                </div>
-                <div className="text-2xl font-bold">{gameState.question}</div>
-              </div>
-            )}
-
-            {/* Canvas */}
-            <canvas
-              ref={canvasRef}
-              width={1200}
-              height={600}
-              className="w-full border border-zinc-800 rounded-lg"
-            />
-
-            {/* Voting Buttons */}
-            {gameState.phase === 'voting' && (
-              <div className="mt-6 flex items-center justify-center gap-4">
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="gap-2"
-                  onClick={() => handleVote('thumbs_up')}
-                  disabled={voteMutation.isPending}
-                >
-                  <ThumbsUp className="w-5 h-5" />
-                  Good Question
-                </Button>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="gap-2"
-                  onClick={() => handleVote('thumbs_down')}
-                  disabled={voteMutation.isPending}
-                >
-                  <ThumbsDown className="w-5 h-5" />
-                  Bad Question
-                </Button>
-              </div>
-            )}
-          </Card>
-        </div>
-
-        {/* Sidebar - Leaderboards */}
-        <div className="space-y-6">
-          {/* AI Leaderboard */}
-          <Card className="bg-zinc-900 border-zinc-800 p-4">
-            <h3 className="text-lg font-bold mb-4 text-green-400">🏆 Top AI Agents</h3>
-            <div className="space-y-2">
-              {agentLeaderboard.slice(0, 10).map((agent, index) => (
-                <div key={agent.id} className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2">
-                    <span className="text-zinc-500 w-6">#{index + 1}</span>
-                    <span className="truncate">{agent.nickname}</span>
+      <div className="container mx-auto px-4 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Main Game Area */}
+          <div className="lg:col-span-3 space-y-6">
+            {/* Game Status */}
+            <Card className="bg-zinc-900 border-zinc-800 p-6">
+              <div className="text-center">
+                <div className="text-xl font-bold mb-2">{getPhaseText()}</div>
+                {gameState.question && (
+                  <div className="mt-4 p-4 bg-zinc-800 rounded-lg">
+                    <div className="text-2xl font-bold">{gameState.question}</div>
+                    <div className="text-sm text-zinc-400 mt-2">by {gameState.questionMaker}</div>
                   </div>
-                  <span className="font-bold text-green-400">{agent.score}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
+                )}
+              </div>
+            </Card>
 
-          {/* Question Leaderboard */}
-          <Card className="bg-zinc-900 border-zinc-800 p-4">
-            <h3 className="text-lg font-bold mb-4 text-blue-400">⭐ Top Questions</h3>
-            <div className="space-y-3">
-              {questionLeaderboard.slice(0, 10).map((question, index) => (
-                <div key={question.id} className="text-sm">
-                  <div className="flex items-start gap-2">
-                    <span className="text-zinc-500 w-6">#{index + 1}</span>
-                    <div className="flex-1">
-                      <div className="text-zinc-300 line-clamp-2">{question.questionText}</div>
-                      <div className="text-xs text-zinc-500 mt-1">
-                        👍 {question.likes} 👎 {question.dislikes}
+            {/* Voting Visualization */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* O Side */}
+              <Card className="bg-gradient-to-br from-green-900/30 to-zinc-900 border-green-700 p-6">
+                <div className="text-center mb-4">
+                  <div className="text-6xl font-bold text-green-400">O</div>
+                  <div className="text-2xl font-bold text-green-400 mt-2">{oAgents.length} votes</div>
+                </div>
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {oAgents.map(agent => (
+                    <div key={agent.id} className="bg-zinc-800/50 rounded p-3 border border-green-700/30">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-medium text-green-300">{agent.nickname}</div>
+                          <div className="text-xs text-zinc-400">Score: {agent.score}</div>
+                        </div>
+                        <div className="text-2xl">✓</div>
+                      </div>
+                      {agent.comment && (
+                        <div className="mt-2 text-sm text-zinc-300 italic">
+                          💬 {agent.comment}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+
+              {/* X Side */}
+              <Card className="bg-gradient-to-br from-red-900/30 to-zinc-900 border-red-700 p-6">
+                <div className="text-center mb-4">
+                  <div className="text-6xl font-bold text-red-400">X</div>
+                  <div className="text-2xl font-bold text-red-400 mt-2">{xAgents.length} votes</div>
+                </div>
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {xAgents.map(agent => (
+                    <div key={agent.id} className="bg-zinc-800/50 rounded p-3 border border-red-700/30">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-medium text-red-300">{agent.nickname}</div>
+                          <div className="text-xs text-zinc-400">Score: {agent.score}</div>
+                        </div>
+                        <div className="text-2xl">✓</div>
+                      </div>
+                      {agent.comment && (
+                        <div className="mt-2 text-sm text-zinc-300 italic">
+                          💬 {agent.comment}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </div>
+
+            {/* Undecided Agents */}
+            {undecidedAgents.length > 0 && gameState.phase === 'answering' && (
+              <Card className="bg-zinc-900 border-zinc-800 p-4">
+                <div className="text-sm text-zinc-400 mb-2">Thinking...</div>
+                <div className="flex flex-wrap gap-2">
+                  {undecidedAgents.map(agent => (
+                    <div key={agent.id} className="px-3 py-1 bg-zinc-800 rounded-full text-sm">
+                      {agent.nickname}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {/* Human Voting */}
+            {gameState.phase === 'voting' && gameState.questionId && (
+              <Card className="bg-zinc-900 border-zinc-800 p-6">
+                <div className="text-center">
+                  <div className="text-lg font-bold mb-4">Rate this question!</div>
+                  <div className="flex items-center justify-center gap-4">
+                    <Button
+                      size="lg"
+                      className="gap-2 bg-green-600 hover:bg-green-700"
+                      onClick={() => handleVote('thumbs_up')}
+                      disabled={voteMutation.isPending}
+                    >
+                      <ThumbsUp className="w-5 h-5" />
+                      Good Question
+                    </Button>
+                    <Button
+                      size="lg"
+                      variant="destructive"
+                      className="gap-2"
+                      onClick={() => handleVote('thumbs_down')}
+                      disabled={voteMutation.isPending}
+                    >
+                      <ThumbsDown className="w-5 h-5" />
+                      Bad Question
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            )}
+          </div>
+
+          {/* Sidebar - Leaderboards */}
+          <div className="space-y-6">
+            {/* AI Leaderboard */}
+            <Card className="bg-zinc-900 border-zinc-800 p-4">
+              <div className="flex items-center gap-2 mb-4">
+                <Trophy className="w-5 h-5 text-yellow-400" />
+                <h3 className="font-bold">Top AI Agents</h3>
+              </div>
+              <div className="space-y-2">
+                {agentLeaderboard.slice(0, 10).map((agent, index) => (
+                  <div key={agent.id} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className={`font-bold ${index < 3 ? 'text-yellow-400' : 'text-zinc-400'}`}>
+                        #{index + 1}
+                      </span>
+                      <span className="truncate">{agent.nickname}</span>
+                    </div>
+                    <span className="font-bold text-green-400">{agent.score}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            {/* Question Leaderboard */}
+            <Card className="bg-zinc-900 border-zinc-800 p-4">
+              <div className="flex items-center gap-2 mb-4">
+                <ThumbsUp className="w-5 h-5 text-blue-400" />
+                <h3 className="font-bold">Top Questions</h3>
+              </div>
+              <div className="space-y-3">
+                {questionLeaderboard.slice(0, 5).map((q, index) => (
+                  <div key={q.id} className="text-sm">
+                    <div className="flex items-start gap-2">
+                      <span className="text-zinc-400">#{index + 1}</span>
+                      <div className="flex-1">
+                        <div className="line-clamp-2">{q.questionText}</div>
+                        <div className="flex items-center gap-3 mt-1 text-xs text-zinc-400">
+                          <span className="text-green-400">👍 {q.likes}</span>
+                          <span className="text-red-400">👎 {q.dislikes}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </Card>
+                ))}
+              </div>
+            </Card>
+          </div>
         </div>
       </div>
     </div>
