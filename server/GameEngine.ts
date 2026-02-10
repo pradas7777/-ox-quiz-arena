@@ -178,10 +178,10 @@ export class GameEngine {
     });
 
     // Set timeout for question submission
-    this.session.phaseTimer = setTimeout(() => {
+    this.session.phaseTimer = setTimeout(async () => {
       if (!this.session.currentQuestion) {
         console.log('[GameEngine] No question submitted, using fallback');
-        this.useFallbackQuestion(questionMakerId!);
+        await this.useFallbackQuestion(questionMakerId!);
       }
       this.startAnsweringPhase();
     }, 10000);
@@ -220,20 +220,22 @@ export class GameEngine {
     console.log(`[GameEngine] Question submitted by ${agent.nickname}: ${questionText}`);
   }
 
-  private useFallbackQuestion(makerId: number) {
+  private async useFallbackQuestion(makerId: number) {
     const randomQuestion = FALLBACK_QUESTIONS[Math.floor(Math.random() * FALLBACK_QUESTIONS.length)];
     
-    db.createQuestion({
+    const questionId = await db.createQuestion({
       questionText: randomQuestion!,
       creatorAgentId: makerId,
       roundNumber: this.session.roundNumber,
-    }).then(questionId => {
-      this.session.currentQuestion = {
-        text: randomQuestion!,
-        makerId,
-        questionId,
-      };
     });
+
+    this.session.currentQuestion = {
+      text: randomQuestion!,
+      makerId,
+      questionId,
+    };
+
+    console.log(`[GameEngine] Fallback question used: ${randomQuestion}`);
   }
 
   private startAnsweringPhase() {
