@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { io, Socket } from "socket.io-client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ThumbsUp, ThumbsDown, Users, Trophy, Clock } from "lucide-react";
+import { ThumbsUp, ThumbsDown, Trophy, Clock, Zap } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
@@ -17,6 +17,8 @@ interface Agent {
   targetY: number;
   choice: 'O' | 'X' | null;
   comment: string | null;
+  color?: string;
+  avatar?: string;
 }
 
 interface GameState {
@@ -29,6 +31,16 @@ interface GameState {
   xCount?: number;
   majorityChoice?: string;
   questionId?: number;
+}
+
+const AVATAR_EMOJIS = ['🤖', '👾', '🎮', '💀', '👽', '🦾', '🧠', '⚡', '🔥', '💎', '🌟', '⭐', '🎯', '🎲', '🎪'];
+const NEON_COLORS = ['#94f814', '#00ffff', '#ff00ff', '#ffff00', '#ff0066', '#00ff00', '#ff6600', '#0066ff', '#ff00aa', '#00ffaa'];
+
+function getAgentCharacter(agentId: number) {
+  return {
+    avatar: AVATAR_EMOJIS[agentId % AVATAR_EMOJIS.length],
+    color: NEON_COLORS[agentId % NEON_COLORS.length],
+  };
 }
 
 export default function GameArena() {
@@ -49,7 +61,6 @@ export default function GameArena() {
   const [questionLeaderboard, setQuestionLeaderboard] = useState<any[]>([]);
 
   const voteMutation = trpc.question.vote.useMutation();
-  const utils = trpc.useUtils();
 
   // Connect to Socket.IO server
   useEffect(() => {
@@ -69,13 +80,22 @@ export default function GameArena() {
     });
 
     socket.on('GAME_STATE', (state: GameState) => {
+      // Assign characters to agents
+      state.agents = state.agents.map(agent => ({
+        ...agent,
+        ...getAgentCharacter(agent.id),
+      }));
       setGameState(state);
     });
 
     socket.on('AGENT_JOINED', (data: { agent: Agent }) => {
+      const agentWithCharacter = {
+        ...data.agent,
+        ...getAgentCharacter(data.agent.id),
+      };
       setGameState(prev => ({
         ...prev,
-        agents: [...prev.agents, data.agent],
+        agents: [...prev.agents, agentWithCharacter],
       }));
       toast.success(`${data.agent.nickname} joined!`);
     });
@@ -98,323 +118,433 @@ export default function GameArena() {
       setTimer(10);
     });
 
-    socket.on('QUESTION', (data: { question: string; question_maker: string; round: number; time_limit: number }) => {
+    socket.on('QUESTION_SUBMITTED', (data: { question: string }) => {
       setGameState(prev => ({
         ...prev,
-        question: data.question,
-        questionMaker: data.question_maker,
         phase: 'answering',
-        // Reset choices
-        agents: prev.agents.map(a => ({ ...a, choice: null, comment: null })),
+        question: data.question,
       }));
-      setTimer(data.time_limit);
+      setTimer(15);
     });
 
-    socket.on('AGENT_MOVED', (data: { agentId: number; choice: 'O' | 'X' }) => {
+    socket.on('AGENT_VOTED', (data: { agentId: number; choice: 'O' | 'X' }) => {
       setGameState(prev => ({
         ...prev,
-        agents: prev.agents.map(a => 
+        agents: prev.agents.map(a =>
           a.id === data.agentId ? { ...a, choice: data.choice } : a
         ),
       }));
     });
 
-    socket.on('COMMENTING_PHASE', () => {
+    socket.on('VOTING_ENDED', () => {
       setGameState(prev => ({ ...prev, phase: 'commenting' }));
       setTimer(10);
     });
 
-    socket.on('AGENT_COMMENTED', (data: { agentId: number; message: string }) => {
+    socket.on('AGENT_COMMENTED', (data: { agentId: number; comment: string }) => {
       setGameState(prev => ({
         ...prev,
-        agents: prev.agents.map(a => 
-          a.id === data.agentId ? { ...a, comment: data.message } : a
+        agents: prev.agents.map(a =>
+          a.id === data.agentId ? { ...a, comment: data.comment } : a
         ),
       }));
     });
 
-    socket.on('RESULT', (data: { 
-      o_count: number; 
-      x_count: number; 
-      majority_choice: string;
-      question_id: number;
-    }) => {
+    socket.on('ROUND_RESULT', (data: { oCount: number; xCount: number; majorityChoice: string; questionId: number }) => {
       setGameState(prev => ({
         ...prev,
         phase: 'result',
-        oCount: data.o_count,
-        xCount: data.x_count,
-        majorityChoice: data.majority_choice,
-        questionId: data.question_id,
+        oCount: data.oCount,
+        xCount: data.xCount,
+        majorityChoice: data.majorityChoice,
+        questionId: data.questionId,
       }));
       setTimer(5);
     });
 
-    socket.on('VOTING_PHASE', () => {
+    socket.on('HUMAN_VOTING_STARTED', () => {
       setGameState(prev => ({ ...prev, phase: 'voting' }));
       setTimer(10);
     });
 
-    socket.on('TIMER', (data: { seconds: number }) => {
+    socket.on('TIMER_UPDATE', (data: { seconds: number }) => {
       setTimer(data.seconds);
+    });
+
+    socket.on('AGENT_UPDATED', (data: { agent: Agent }) => {
+      const agentWithCharacter = {
+        ...data.agent,
+        ...getAgentCharacter(data.agent.id),
+      };
+      setGameState(prev => ({
+        ...prev,
+        agents: prev.agents.map(a => a.id === data.agent.id ? agentWithCharacter : a),
+      }));
     });
 
     return () => {
       socket.disconnect();
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
     };
   }, []);
 
   // Fetch leaderboards
-  useEffect(() => {
-    const fetchLeaderboards = async () => {
-      try {
-        const agents = await utils.agent.leaderboard.fetch({ limit: 10 });
-        setAgentLeaderboard(agents || []);
-      } catch (error) {
-        console.error('Failed to fetch agent leaderboard:', error);
-        setAgentLeaderboard([]);
-      }
+  const { data: leaderboardData } = trpc.question.leaderboard.useQuery({ limit: 10 }, {
+    refetchInterval: 10000,
+  });
 
-      try {
-        const questions = await utils.question.leaderboard.fetch({ limit: 10 });
-        setQuestionLeaderboard(questions || []);
-      } catch (error) {
-        console.error('Failed to fetch question leaderboard:', error);
-        setQuestionLeaderboard([]);
-      }
+  useEffect(() => {
+    if (leaderboardData) {
+      setQuestionLeaderboard(leaderboardData);
+    }
+  }, [leaderboardData]);
+
+  const { data: agentsData } = trpc.admin.getAllAgents.useQuery(undefined, {
+    refetchInterval: 5000,
+  });
+
+  useEffect(() => {
+    if (agentsData) {
+      const sorted = [...agentsData].sort((a, b) => b.score - a.score);
+      setAgentLeaderboard(sorted);
+    }
+  }, [agentsData]);
+
+  // Canvas rendering with O/X movement
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const resizeCanvas = () => {
+      canvas.width = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
+    };
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw O/X background zones
+      const midX = canvas.width / 2;
+
+      // O Zone (left side)
+      ctx.fillStyle = 'rgba(0, 255, 255, 0.1)';
+      ctx.fillRect(0, 0, midX, canvas.height);
+      ctx.strokeStyle = '#00ffff';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(midX / 2, canvas.height / 2, Math.min(midX, canvas.height) / 3, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Draw "O" text
+      ctx.font = 'bold 120px Orbitron';
+      ctx.fillStyle = '#00ffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = '#00ffff';
+      ctx.shadowBlur = 20;
+      ctx.fillText('O', midX / 2, canvas.height / 2);
+      ctx.shadowBlur = 0;
+
+      // X Zone (right side)
+      ctx.fillStyle = 'rgba(255, 0, 255, 0.1)';
+      ctx.fillRect(midX, 0, midX, canvas.height);
+      ctx.strokeStyle = '#ff00ff';
+      ctx.lineWidth = 3;
+      const xSize = Math.min(midX, canvas.height) / 3;
+      const xCenterX = midX + midX / 2;
+      const xCenterY = canvas.height / 2;
+      ctx.beginPath();
+      ctx.moveTo(xCenterX - xSize, xCenterY - xSize);
+      ctx.lineTo(xCenterX + xSize, xCenterY + xSize);
+      ctx.moveTo(xCenterX + xSize, xCenterY - xSize);
+      ctx.lineTo(xCenterX - xSize, xCenterY + xSize);
+      ctx.stroke();
+
+      // Draw "X" text
+      ctx.font = 'bold 120px Orbitron';
+      ctx.fillStyle = '#ff00ff';
+      ctx.shadowColor = '#ff00ff';
+      ctx.shadowBlur = 20;
+      ctx.fillText('X', xCenterX, xCenterY);
+      ctx.shadowBlur = 0;
+
+      // Draw center divider
+      ctx.strokeStyle = '#94f814';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([10, 10]);
+      ctx.beginPath();
+      ctx.moveTo(midX, 0);
+      ctx.lineTo(midX, canvas.height);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Update and draw agents
+      gameState.agents.forEach(agent => {
+        // Calculate target position based on choice
+        let targetX = agent.targetX || canvas.width / 2;
+        let targetY = agent.targetY || canvas.height / 2;
+
+        if (agent.choice === 'O') {
+          // Move to O zone (left side)
+          targetX = Math.random() * (midX - 100) + 50;
+          targetY = Math.random() * (canvas.height - 100) + 50;
+        } else if (agent.choice === 'X') {
+          // Move to X zone (right side)
+          targetX = Math.random() * (midX - 100) + midX + 50;
+          targetY = Math.random() * (canvas.height - 100) + 50;
+        } else {
+          // No choice yet - stay in center
+          targetX = midX + (Math.random() - 0.5) * 200;
+          targetY = canvas.height / 2 + (Math.random() - 0.5) * 200;
+        }
+
+        // Smooth movement
+        const currentX = agent.x || targetX;
+        const currentY = agent.y || targetY;
+        const newX = currentX + (targetX - currentX) * 0.05;
+        const newY = currentY + (targetY - currentY) * 0.05;
+
+        agent.x = newX;
+        agent.y = newY;
+        agent.targetX = targetX;
+        agent.targetY = targetY;
+
+        // Draw agent character
+        const agentSize = 40;
+        
+        // Draw glow
+        ctx.shadowColor = agent.color || '#94f814';
+        ctx.shadowBlur = 15;
+        
+        // Draw circle background
+        ctx.fillStyle = agent.color || '#94f814';
+        ctx.beginPath();
+        ctx.arc(newX, newY, agentSize / 2, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.shadowBlur = 0;
+
+        // Draw avatar emoji
+        ctx.font = `${agentSize - 10}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(agent.avatar || '🤖', newX, newY);
+
+        // Draw nickname
+        ctx.font = 'bold 12px Rajdhani';
+        ctx.fillStyle = '#fff';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 3;
+        ctx.fillText(agent.nickname, newX, newY + agentSize);
+        ctx.shadowBlur = 0;
+
+        // Draw score
+        ctx.font = '10px Rajdhani';
+        ctx.fillStyle = agent.color || '#94f814';
+        ctx.fillText(`${agent.score}pts`, newX, newY + agentSize + 15);
+      });
+
+      animationFrameRef.current = requestAnimationFrame(animate);
     };
 
-    fetchLeaderboards();
-    const interval = setInterval(fetchLeaderboards, 10000);
-    return () => clearInterval(interval);
-  }, [utils]);
+    animate();
 
-  const handleVote = async (voteType: 'thumbs_up' | 'thumbs_down') => {
+    return () => {
+      window.removeEventListener('resize', resizeCanvas);
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [gameState.agents]);
+
+  const handleVote = (vote: 'like' | 'dislike') => {
     if (!gameState.questionId) {
       toast.error('No question to vote on');
       return;
     }
 
-    try {
-      await voteMutation.mutateAsync({
-        questionId: gameState.questionId,
-        voteType,
-      });
-      toast.success('Vote recorded!');
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to vote');
-    }
+    voteMutation.mutate(
+      { questionId: gameState.questionId, voteType: vote === 'like' ? 'thumbs_up' as const : 'thumbs_down' as const },
+      {
+        onSuccess: () => {
+          toast.success(`Voted ${vote === 'like' ? '👍' : '👎'}!`);
+        },
+        onError: (error) => {
+          toast.error(error.message);
+        },
+      }
+    );
   };
 
   const getPhaseText = () => {
     switch (gameState.phase) {
       case 'selecting':
-        return `🎯 ${gameState.questionMaker || 'Selecting'} is creating a question...`;
+        return `Waiting for ${gameState.questionMaker || 'question maker'} to create question...`;
       case 'answering':
-        return '🤔 AI agents are choosing O or X...';
+        return 'AI agents are voting...';
       case 'commenting':
-        return '💬 AI agents are commenting...';
+        return 'AI agents are commenting...';
       case 'result':
-        return `🏆 Result: ${gameState.majorityChoice} wins! (O: ${gameState.oCount}, X: ${gameState.xCount})`;
+        return `Result: ${gameState.majorityChoice === 'tie' ? 'TIE!' : `${gameState.majorityChoice} wins!`}`;
       case 'voting':
-        return '👍 Vote on this question!';
+        return 'Vote on this question!';
       default:
         return 'Waiting for game to start...';
     }
   };
 
-  const oAgents = gameState.agents.filter(a => a.choice === 'O');
-  const xAgents = gameState.agents.filter(a => a.choice === 'X');
-  const undecidedAgents = gameState.agents.filter(a => a.choice === null);
-
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
+    <div className="min-h-screen scan-line">
+      <div className="fixed inset-0 cyber-grid opacity-20 pointer-events-none" />
+
       {/* Header */}
-      <header className="border-b border-zinc-800 bg-zinc-900/50 backdrop-blur">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-green-400 via-blue-400 to-red-400 bg-clip-text text-transparent">
-                OX Quiz Arena
-              </h1>
-              <p className="text-sm text-zinc-400">Round {gameState.round}</p>
+      <header className="border-b border-primary/30 neon-box relative z-10">
+        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl font-['Orbitron'] font-bold neon-text">GAME ARENA</h1>
+            <div className="flex items-center gap-2 px-3 py-1 neon-box rounded">
+              <Clock className="w-4 h-4 text-primary" />
+              <span className="font-['Orbitron'] text-primary font-bold">{timer}s</span>
             </div>
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-blue-400" />
-                <span className="text-lg font-bold">{gameState.agents.length}</span>
-                <span className="text-sm text-zinc-400">AI Agents</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Clock className="w-5 h-5 text-yellow-400" />
-                <span className="text-2xl font-bold text-yellow-400">{timer}s</span>
-              </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="px-3 py-1 neon-box rounded">
+              <span className="text-sm font-['Rajdhani']">Round <span className="text-primary font-bold">{gameState.round}</span></span>
+            </div>
+            <div className="px-3 py-1 neon-box rounded">
+              <span className="text-sm font-['Rajdhani']">Players <span className="text-primary font-bold">{gameState.agents.length}</span></span>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="container mx-auto px-4 py-6">
+      <div className="container mx-auto px-4 py-6 relative z-10">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Main Game Area */}
           <div className="lg:col-span-3 space-y-6">
-            {/* Game Status */}
-            <Card className="bg-zinc-900 border-zinc-800 p-6">
-              <div className="text-center">
-                <div className="text-xl font-bold mb-2">{getPhaseText()}</div>
-                {gameState.question && (
-                  <div className="mt-4 p-4 bg-zinc-800 rounded-lg">
-                    <div className="text-2xl font-bold">{gameState.question}</div>
-                    <div className="text-sm text-zinc-400 mt-2">by {gameState.questionMaker}</div>
+            {/* Question Display */}
+            <Card className="cyber-card p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <Zap className="w-5 h-5 text-primary" />
+                <h2 className="text-lg font-['Orbitron'] font-bold text-primary">{getPhaseText()}</h2>
+              </div>
+              {gameState.question && (
+                <div className="p-4 neon-box rounded">
+                  <p className="text-xl font-['Rajdhani'] font-medium">{gameState.question}</p>
+                  {gameState.questionMaker && (
+                    <p className="text-sm text-muted-foreground mt-2 font-['Rajdhani']">
+                      Asked by <span className="text-primary">{gameState.questionMaker}</span>
+                    </p>
+                  )}
+                </div>
+              )}
+              {gameState.phase === 'result' && (
+                <div className="mt-4 p-4 neon-box rounded">
+                  <div className="flex items-center justify-around">
+                    <div className="text-center">
+                      <div className="text-4xl font-['Orbitron'] font-bold" style={{color: '#00ffff'}}>
+                        {gameState.oCount || 0}
+                      </div>
+                      <div className="text-sm font-['Rajdhani'] text-muted-foreground">voted O</div>
+                    </div>
+                    <div className="text-4xl font-['Orbitron']">VS</div>
+                    <div className="text-center">
+                      <div className="text-4xl font-['Orbitron'] font-bold" style={{color: '#ff00ff'}}>
+                        {gameState.xCount || 0}
+                      </div>
+                      <div className="text-sm font-['Rajdhani'] text-muted-foreground">voted X</div>
+                    </div>
                   </div>
+                </div>
+              )}
+              {gameState.phase === 'voting' && (
+                <div className="mt-4 flex gap-4 justify-center">
+                  <Button
+                    onClick={() => handleVote('like')}
+                    className="cyber-button gap-2"
+                    style={{borderColor: '#00ff00', color: '#00ff00'}}
+                  >
+                    <ThumbsUp className="w-5 h-5" />
+                    Good Question
+                  </Button>
+                  <Button
+                    onClick={() => handleVote('dislike')}
+                    className="cyber-button gap-2"
+                    style={{borderColor: '#ff0066', color: '#ff0066'}}
+                  >
+                    <ThumbsDown className="w-5 h-5" />
+                    Bad Question
+                  </Button>
+                </div>
+              )}
+            </Card>
+
+            {/* Canvas Game Field */}
+            <Card className="cyber-card p-0 overflow-hidden">
+              <canvas
+                ref={canvasRef}
+                className="w-full"
+                style={{ height: '500px', background: 'rgba(0, 0, 0, 0.5)' }}
+              />
+            </Card>
+          </div>
+
+          {/* Sidebar */}
+          <div className="space-y-6">
+            {/* AI Leaderboard */}
+            <Card className="cyber-card p-4">
+              <div className="flex items-center gap-2 mb-4">
+                <Trophy className="w-5 h-5 text-primary" />
+                <h3 className="font-['Orbitron'] font-bold text-primary">Top AI Agents</h3>
+              </div>
+              <div className="space-y-2">
+                {agentLeaderboard.slice(0, 5).map((agent, idx) => (
+                  <div key={agent.id} className="flex items-center gap-2 p-2 neon-box rounded text-sm">
+                    <span className="font-['Orbitron'] font-bold" style={{color: NEON_COLORS[idx % NEON_COLORS.length]}}>
+                      #{idx + 1}
+                    </span>
+                    <span className="flex-1 font-['Rajdhani'] truncate">{agent.nickname}</span>
+                    <span className="font-['Orbitron'] text-primary">{agent.score}</span>
+                  </div>
+                ))}
+                {agentLeaderboard.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4 font-['Rajdhani']">No data yet</p>
                 )}
               </div>
             </Card>
 
-            {/* Voting Visualization */}
-            <div className="grid grid-cols-2 gap-4">
-              {/* O Side */}
-              <Card className="bg-gradient-to-br from-green-900/30 to-zinc-900 border-green-700 p-6">
-                <div className="text-center mb-4">
-                  <div className="text-6xl font-bold text-green-400">O</div>
-                  <div className="text-2xl font-bold text-green-400 mt-2">{oAgents.length} votes</div>
-                </div>
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {oAgents.map(agent => (
-                    <div key={agent.id} className="bg-zinc-800/50 rounded p-3 border border-green-700/30">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="font-medium text-green-300">{agent.nickname}</div>
-                          <div className="text-xs text-zinc-400">Score: {agent.score}</div>
-                        </div>
-                        <div className="text-2xl">✓</div>
-                      </div>
-                      {agent.comment && (
-                        <div className="mt-2 text-sm text-zinc-300 italic">
-                          💬 {agent.comment}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </Card>
-
-              {/* X Side */}
-              <Card className="bg-gradient-to-br from-red-900/30 to-zinc-900 border-red-700 p-6">
-                <div className="text-center mb-4">
-                  <div className="text-6xl font-bold text-red-400">X</div>
-                  <div className="text-2xl font-bold text-red-400 mt-2">{xAgents.length} votes</div>
-                </div>
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {xAgents.map(agent => (
-                    <div key={agent.id} className="bg-zinc-800/50 rounded p-3 border border-red-700/30">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="font-medium text-red-300">{agent.nickname}</div>
-                          <div className="text-xs text-zinc-400">Score: {agent.score}</div>
-                        </div>
-                        <div className="text-2xl">✓</div>
-                      </div>
-                      {agent.comment && (
-                        <div className="mt-2 text-sm text-zinc-300 italic">
-                          💬 {agent.comment}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            </div>
-
-            {/* Undecided Agents */}
-            {undecidedAgents.length > 0 && gameState.phase === 'answering' && (
-              <Card className="bg-zinc-900 border-zinc-800 p-4">
-                <div className="text-sm text-zinc-400 mb-2">Thinking...</div>
-                <div className="flex flex-wrap gap-2">
-                  {undecidedAgents.map(agent => (
-                    <div key={agent.id} className="px-3 py-1 bg-zinc-800 rounded-full text-sm">
-                      {agent.nickname}
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            )}
-
-            {/* Human Voting */}
-            {gameState.phase === 'voting' && gameState.questionId && (
-              <Card className="bg-zinc-900 border-zinc-800 p-6">
-                <div className="text-center">
-                  <div className="text-lg font-bold mb-4">Rate this question!</div>
-                  <div className="flex items-center justify-center gap-4">
-                    <Button
-                      size="lg"
-                      className="gap-2 bg-green-600 hover:bg-green-700"
-                      onClick={() => handleVote('thumbs_up')}
-                      disabled={voteMutation.isPending}
-                    >
-                      <ThumbsUp className="w-5 h-5" />
-                      Good Question
-                    </Button>
-                    <Button
-                      size="lg"
-                      variant="destructive"
-                      className="gap-2"
-                      onClick={() => handleVote('thumbs_down')}
-                      disabled={voteMutation.isPending}
-                    >
-                      <ThumbsDown className="w-5 h-5" />
-                      Bad Question
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-            )}
-          </div>
-
-          {/* Sidebar - Leaderboards */}
-          <div className="space-y-6">
-            {/* AI Leaderboard */}
-            <Card className="bg-zinc-900 border-zinc-800 p-4">
+            {/* Question Leaderboard */}
+            <Card className="cyber-card p-4">
               <div className="flex items-center gap-2 mb-4">
-                <Trophy className="w-5 h-5 text-yellow-400" />
-                <h3 className="font-bold">Top AI Agents</h3>
+                <Trophy className="w-5 h-5" style={{color: '#ff00ff'}} />
+                <h3 className="font-['Orbitron'] font-bold" style={{color: '#ff00ff'}}>Top Questions</h3>
               </div>
               <div className="space-y-2">
-                {agentLeaderboard.slice(0, 10).map((agent, index) => (
-                  <div key={agent.id} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className={`font-bold ${index < 3 ? 'text-yellow-400' : 'text-zinc-400'}`}>
-                        #{index + 1}
+                {questionLeaderboard.slice(0, 5).map((q, idx) => (
+                  <div key={q.id} className="p-2 neon-box rounded">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-['Orbitron'] font-bold text-xs" style={{color: NEON_COLORS[idx % NEON_COLORS.length]}}>
+                        #{idx + 1}
                       </span>
-                      <span className="truncate">{agent.nickname}</span>
+                      <span className="text-xs font-['Rajdhani'] text-muted-foreground">{q.topic}</span>
                     </div>
-                    <span className="font-bold text-green-400">{agent.score}</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-
-            {/* Question Leaderboard */}
-            <Card className="bg-zinc-900 border-zinc-800 p-4">
-              <div className="flex items-center gap-2 mb-4">
-                <ThumbsUp className="w-5 h-5 text-blue-400" />
-                <h3 className="font-bold">Top Questions</h3>
-              </div>
-              <div className="space-y-3">
-                {questionLeaderboard.slice(0, 5).map((q, index) => (
-                  <div key={q.id} className="text-sm">
-                    <div className="flex items-start gap-2">
-                      <span className="text-zinc-400">#{index + 1}</span>
-                      <div className="flex-1">
-                        <div className="line-clamp-2">{q.questionText}</div>
-                        <div className="flex items-center gap-3 mt-1 text-xs text-zinc-400">
-                          <span className="text-green-400">👍 {q.likes}</span>
-                          <span className="text-red-400">👎 {q.dislikes}</span>
-                        </div>
-                      </div>
+                    <p className="text-sm font-['Rajdhani'] truncate">{q.questionText}</p>
+                    <div className="flex gap-2 mt-1 text-xs font-['Rajdhani']">
+                      <span style={{color: '#00ff00'}}>👍 {q.likes}</span>
+                      <span style={{color: '#ff0066'}}>👎 {q.dislikes}</span>
                     </div>
                   </div>
                 ))}
+                {questionLeaderboard.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4 font-['Rajdhani']">No data yet</p>
+                )}
               </div>
             </Card>
           </div>
