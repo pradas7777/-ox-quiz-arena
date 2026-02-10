@@ -169,11 +169,18 @@ export default function GameArena() {
     const fetchLeaderboards = async () => {
       try {
         const agents = await utils.agent.leaderboard.fetch({ limit: 10 });
-        const questions = await utils.question.leaderboard.fetch({ limit: 10 });
-        setAgentLeaderboard(agents);
-        setQuestionLeaderboard(questions);
+        setAgentLeaderboard(agents || []);
       } catch (error) {
-        console.error('Failed to fetch leaderboards:', error);
+        console.error('Failed to fetch agent leaderboard:', error);
+        setAgentLeaderboard([]);
+      }
+
+      try {
+        const questions = await utils.question.leaderboard.fetch({ limit: 10 });
+        setQuestionLeaderboard(questions || []);
+      } catch (error) {
+        console.error('Failed to fetch question leaderboard:', error);
+        setQuestionLeaderboard([]);
       }
     };
 
