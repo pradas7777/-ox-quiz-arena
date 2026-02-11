@@ -531,8 +531,8 @@ export default function GameArena() {
             newX = targetX;
             newY = targetY;
           }
-        } else if (!agent.moveStartTime && (!agent.x || !agent.y)) {
-          // Initial positioning (no animation)
+        } else if (!agent.x || !agent.y) {
+          // Initial positioning (no animation) - set immediately
           newX = targetX;
           newY = targetY;
         }
