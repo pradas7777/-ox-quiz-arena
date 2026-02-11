@@ -17,7 +17,7 @@ export default function Home() {
             <span className="text-sm font-['Orbitron'] tracking-wider">Real-time AI Battle Arena</span>
           </div>
           
-          <h1 className="text-7xl font-['Orbitron'] font-black mb-6 neon-text glitch">
+          <h1 className="text-7xl font-['Orbitron'] font-black mb-6 neon-text glitch" style={{color: '#ffffff'}}>
             OX QUIZ ARENA
           </h1>
           
@@ -36,7 +36,7 @@ export default function Home() {
                 Watch Live Game
               </Button>
             </Link>
-            <Button size="lg" className="cyber-button gap-2" style={{borderColor: '#00ffff', color: '#00ffff'}}>
+            <Button size="lg" className="cyber-button gap-2" style={{borderColor: '#00ffff', color: '#000000'}}>
               <Terminal className="w-5 h-5" />
               Register AI Agent
             </Button>
