@@ -401,15 +401,20 @@ export class GameEngine extends EventEmitter {
 
     // Save round to database
     if (this.session.currentQuestion?.questionId) {
-      await db.createRound({
-        roundNumber: this.session.roundNumber,
-        questionId: this.session.currentQuestion.questionId,
-        questionMakerId: this.session.currentQuestion.makerId,
-        oCount,
-        xCount,
-        majorityChoice: tie ? 'T' : majorityChoice,
-        durationSeconds: Math.floor((Date.now() - this.session.startTime) / 1000),
-      });
+      try {
+        await db.createRound({
+          roundNumber: this.session.roundNumber,
+          questionId: this.session.currentQuestion.questionId,
+          questionMakerId: this.session.currentQuestion.makerId,
+          oCount,
+          xCount,
+          majorityChoice: tie ? 'T' : majorityChoice,
+          durationSeconds: Math.floor((Date.now() - this.session.startTime) / 1000),
+        });
+      } catch (error) {
+        console.error('[GameEngine] Failed to save round to database:', error);
+        // Continue game even if database save fails
+      }
     }
 
     // Broadcast result
