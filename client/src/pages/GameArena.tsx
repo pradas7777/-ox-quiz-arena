@@ -398,7 +398,7 @@ export default function GameArena() {
 
       // Helper function to check collision
       const checkCollision = (x: number, y: number, excludeAgent: Agent) => {
-        const minDistance = 60; // Minimum distance between agents
+        const minDistance = 100; // Increased minimum distance between agents
         return gameState.agents.some(other => {
           if (other.id === excludeAgent.id) return false;
           if (!other.x || !other.y) return false;
@@ -409,32 +409,97 @@ export default function GameArena() {
         });
       };
 
-      // Helper function to find non-colliding position
-      const findNonCollidingPosition = (choice: 'O' | 'X' | null, agent: Agent, maxAttempts = 20) => {
-        for (let i = 0; i < maxAttempts; i++) {
+      // Grid-based positioning helper
+      const createGridPositions = (choice: 'O' | 'X' | null) => {
+        const positions: { x: number; y: number }[] = [];
+        const padding = 80;
+        const spacing = 120; // Grid spacing
+        
+        if (choice === 'O') {
+          // O zone (left side)
+          const cols = Math.floor((midX - padding * 2) / spacing);
+          const rows = Math.floor((canvas.height - padding * 2) / spacing);
+          for (let row = 0; row < rows; row++) {
+            for (let col = 0; col < cols; col++) {
+              positions.push({
+                x: padding + col * spacing + spacing / 2,
+                y: padding + row * spacing + spacing / 2
+              });
+            }
+          }
+        } else if (choice === 'X') {
+          // X zone (right side)
+          const cols = Math.floor((midX - padding * 2) / spacing);
+          const rows = Math.floor((canvas.height - padding * 2) / spacing);
+          for (let row = 0; row < rows; row++) {
+            for (let col = 0; col < cols; col++) {
+              positions.push({
+                x: midX + padding + col * spacing + spacing / 2,
+                y: padding + row * spacing + spacing / 2
+              });
+            }
+          }
+        } else {
+          // Center zone
+          const cols = 3;
+          const rows = 3;
+          for (let row = 0; row < rows; row++) {
+            for (let col = 0; col < cols; col++) {
+              positions.push({
+                x: midX - spacing + col * spacing,
+                y: canvas.height / 2 - spacing + row * spacing
+              });
+            }
+          }
+        }
+        
+        // Shuffle positions for randomness
+        for (let i = positions.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [positions[i], positions[j]] = [positions[j], positions[i]];
+        }
+        
+        return positions;
+      };
+
+      // Helper function to find non-colliding position using grid
+      const findNonCollidingPosition = (choice: 'O' | 'X' | null, agent: Agent) => {
+        const gridPositions = createGridPositions(choice);
+        
+        // Try grid positions first
+        for (const pos of gridPositions) {
+          if (!checkCollision(pos.x, pos.y, agent)) {
+            return pos;
+          }
+        }
+        
+        // Fallback: try random positions with larger spread
+        for (let i = 0; i < 50; i++) {
           let x, y;
           if (choice === 'O') {
-            x = Math.random() * (midX - 100) + 50;
-            y = Math.random() * (canvas.height - 100) + 50;
+            x = Math.random() * (midX - 160) + 80;
+            y = Math.random() * (canvas.height - 160) + 80;
           } else if (choice === 'X') {
-            x = Math.random() * (midX - 100) + midX + 50;
-            y = Math.random() * (canvas.height - 100) + 50;
+            x = Math.random() * (midX - 160) + midX + 80;
+            y = Math.random() * (canvas.height - 160) + 80;
           } else {
-            x = midX + (Math.random() - 0.5) * 100;
-            y = canvas.height / 2 + (Math.random() - 0.5) * 100;
+            x = midX + (Math.random() - 0.5) * 200;
+            y = canvas.height / 2 + (Math.random() - 0.5) * 200;
           }
           
           if (!checkCollision(x, y, agent)) {
             return { x, y };
           }
         }
-        // Fallback: return position even if it collides
+        
+        // Last resort: return position with jitter to avoid exact overlap
+        const jitter = () => (Math.random() - 0.5) * 50;
         if (choice === 'O') {
-          return { x: Math.random() * (midX - 100) + 50, y: Math.random() * (canvas.height - 100) + 50 };
+          return { x: midX / 2 + jitter(), y: canvas.height / 2 + jitter() };
         } else if (choice === 'X') {
-          return { x: Math.random() * (midX - 100) + midX + 50, y: Math.random() * (canvas.height - 100) + 50 };
+          return { x: midX + midX / 2 + jitter(), y: canvas.height / 2 + jitter() };
         } else {
-          return { x: midX, y: canvas.height / 2 };
+          return { x: midX + jitter(), y: canvas.height / 2 + jitter() };
         }
       };
 
@@ -476,12 +541,10 @@ export default function GameArena() {
           // Create curved path with two control points
           const dx = agent.targetX - agent.startX;
           const dy = agent.targetY - agent.startY;
-          const midPointX = agent.startX + dx / 2;
-          const midPointY = agent.startY + dy / 2;
           
-          // Add perpendicular offset for curve
-          const perpX = -dy * 0.3;
-          const perpY = dx * 0.3;
+          // Add perpendicular offset for curve (more dramatic)
+          const perpX = -dy * 0.4;
+          const perpY = dx * 0.4;
           
           agent.controlPoint1X = agent.startX + dx * 0.25 + perpX;
           agent.controlPoint1Y = agent.startY + dy * 0.25 + perpY;
