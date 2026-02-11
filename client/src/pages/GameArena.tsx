@@ -19,6 +19,8 @@ interface Agent {
   comment: string | null;
   color?: string;
   avatar?: string;
+  hasMovedThisRound?: boolean;
+  moveStartTime?: number;
 }
 
 interface GameState {
@@ -55,6 +57,8 @@ export default function GameArena() {
     questionMaker: null,
     agents: [],
   });
+
+  const [currentRound, setCurrentRound] = useState<number>(0);
 
   const [timer, setTimer] = useState<number>(0);
   const [agentLeaderboard, setAgentLeaderboard] = useState<any[]>([]);
@@ -125,12 +129,21 @@ export default function GameArena() {
     });
 
     socket.on('QUESTION_MAKER_SELECTED', (data: { agentId: number; nickname: string; round: number }) => {
+      setCurrentRound(data.round);
       setGameState(prev => ({
         ...prev,
         round: data.round,
         phase: 'selecting',
         questionMaker: data.nickname,
         question: null,
+        // Reset movement flags for new round
+        agents: prev.agents.map(a => ({
+          ...a,
+          hasMovedThisRound: false,
+          moveStartTime: undefined,
+          choice: null,
+          comment: null,
+        })),
       }));
       setTimer(10);
     });
@@ -176,7 +189,7 @@ export default function GameArena() {
         majorityChoice: data.majorityChoice,
         questionId: data.questionId,
       }));
-      setTimer(5);
+      setTimer(60); // Show result for 60 seconds
     });
 
     socket.on('HUMAN_VOTING_STARTED', () => {
@@ -302,33 +315,104 @@ export default function GameArena() {
       ctx.stroke();
       ctx.setLineDash([]);
 
+      // Helper function to check collision
+      const checkCollision = (x: number, y: number, excludeAgent: Agent) => {
+        const minDistance = 60; // Minimum distance between agents
+        return gameState.agents.some(other => {
+          if (other.id === excludeAgent.id) return false;
+          if (!other.x || !other.y) return false;
+          const dx = other.x - x;
+          const dy = other.y - y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          return distance < minDistance;
+        });
+      };
+
+      // Helper function to find non-colliding position
+      const findNonCollidingPosition = (choice: 'O' | 'X' | null, agent: Agent, maxAttempts = 20) => {
+        for (let i = 0; i < maxAttempts; i++) {
+          let x, y;
+          if (choice === 'O') {
+            x = Math.random() * (midX - 100) + 50;
+            y = Math.random() * (canvas.height - 100) + 50;
+          } else if (choice === 'X') {
+            x = Math.random() * (midX - 100) + midX + 50;
+            y = Math.random() * (canvas.height - 100) + 50;
+          } else {
+            x = midX + (Math.random() - 0.5) * 100;
+            y = canvas.height / 2 + (Math.random() - 0.5) * 100;
+          }
+          
+          if (!checkCollision(x, y, agent)) {
+            return { x, y };
+          }
+        }
+        // Fallback: return position even if it collides
+        if (choice === 'O') {
+          return { x: Math.random() * (midX - 100) + 50, y: Math.random() * (canvas.height - 100) + 50 };
+        } else if (choice === 'X') {
+          return { x: Math.random() * (midX - 100) + midX + 50, y: Math.random() * (canvas.height - 100) + 50 };
+        } else {
+          return { x: midX, y: canvas.height / 2 };
+        }
+      };
+
+      // Sequential movement: assign move start times
+      const now = Date.now();
+      const votingPhase = gameState.phase === 'answering';
+      
+      if (votingPhase) {
+        const agentsWithChoice = gameState.agents.filter(a => a.choice && !a.hasMovedThisRound);
+        const totalAgents = agentsWithChoice.length;
+        const movementDuration = 10000; // 10 seconds for voting phase
+        const delayPerAgent = totalAgents > 0 ? movementDuration / totalAgents : 0;
+        
+        agentsWithChoice.forEach((agent, index) => {
+          if (!agent.moveStartTime) {
+            agent.moveStartTime = now + (index * delayPerAgent);
+          }
+        });
+      }
+
       // Update and draw agents
       gameState.agents.forEach(agent => {
-        // Calculate target position based on choice (only if not set)
-        if (!agent.targetX || !agent.targetY) {
-          if (agent.choice === 'O') {
-            // Move to O zone (left side) - random position once
-            agent.targetX = Math.random() * (midX - 100) + 50;
-            agent.targetY = Math.random() * (canvas.height - 100) + 50;
-          } else if (agent.choice === 'X') {
-            // Move to X zone (right side) - random position once
-            agent.targetX = Math.random() * (midX - 100) + midX + 50;
-            agent.targetY = Math.random() * (canvas.height - 100) + 50;
-          } else {
-            // No choice yet - center position
-            agent.targetX = midX;
-            agent.targetY = canvas.height / 2;
+        // Calculate target position based on choice (only once per round)
+        if (agent.choice && !agent.hasMovedThisRound && (!agent.targetX || !agent.targetY || agent.choice !== (agent.targetX > midX ? 'X' : 'O'))) {
+          const pos = findNonCollidingPosition(agent.choice, agent);
+          agent.targetX = pos.x;
+          agent.targetY = pos.y;
+        } else if (!agent.choice) {
+          // No choice yet - center position
+          if (!agent.targetX || !agent.targetY) {
+            const pos = findNonCollidingPosition(null, agent);
+            agent.targetX = pos.x;
+            agent.targetY = pos.y;
           }
         }
 
-        const targetX = agent.targetX;
-        const targetY = agent.targetY;
+        const targetX = agent.targetX || midX;
+        const targetY = agent.targetY || canvas.height / 2;
 
-        // Smooth movement
+        // Smooth movement with slower speed
         const currentX = agent.x || targetX;
         const currentY = agent.y || targetY;
-        const newX = currentX + (targetX - currentX) * 0.05;
-        const newY = currentY + (targetY - currentY) * 0.05;
+        
+        // Only move if it's time for this agent to move (sequential)
+        let moveSpeed = 0;
+        if (agent.moveStartTime && now >= agent.moveStartTime) {
+          moveSpeed = 0.02; // Much slower movement (was 0.05)
+        } else if (!agent.moveStartTime) {
+          moveSpeed = 0.02; // Default slow movement for agents without choice
+        }
+        
+        const newX = currentX + (targetX - currentX) * moveSpeed;
+        const newY = currentY + (targetY - currentY) * moveSpeed;
+
+        // Check if agent has reached target
+        const distance = Math.sqrt((targetX - newX) ** 2 + (targetY - newY) ** 2);
+        if (distance < 2 && agent.choice && !agent.hasMovedThisRound) {
+          agent.hasMovedThisRound = true;
+        }
 
         agent.x = newX;
         agent.y = newY;
@@ -550,9 +634,18 @@ export default function GameArena() {
           <div className="lg:col-span-3 space-y-6">
             {/* Question Display */}
             <Card className="cyber-card p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <Zap className="w-5 h-5 text-primary" />
-                <h2 className="text-lg font-['Orbitron'] font-bold text-primary">{getPhaseText()}</h2>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <Zap className="w-5 h-5 text-primary" />
+                  <h2 className="text-lg font-['Orbitron'] font-bold text-primary">{getPhaseText()}</h2>
+                </div>
+                {gameState.phase === 'answering' && (
+                  <div className="flex items-center gap-2 px-4 py-2 neon-box rounded">
+                    <Clock className="w-5 h-5 text-primary animate-pulse" />
+                    <span className="text-2xl font-['Orbitron'] font-bold text-primary">{timer}s</span>
+                    <span className="text-sm font-['Rajdhani'] text-muted-foreground">남음</span>
+                  </div>
+                )}
               </div>
               {gameState.question && (
                 <div className="p-4 neon-box rounded">

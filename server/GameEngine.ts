@@ -431,10 +431,10 @@ export class GameEngine extends EventEmitter {
     // Broadcast state update to spectators
     this.emit('stateUpdate', this.getGameState());
 
-    // Show result for 10 seconds
+    // Show result for 60 seconds
     this.session.phaseTimer = setTimeout(() => {
       this.startVotingPhase();
-    }, 10000);
+    }, 60000);
   }
 
   private startVotingPhase() {
