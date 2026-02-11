@@ -164,3 +164,26 @@
 - [x] AI 봇들이 최대한 겹치지 않도록 충돌 방지 로직 강화
 - [x] 그리드 기반 배치 시스템으로 균등 분산 (120px 간격)
 - [x] 최소 간격을 더 넓게 확대 (60px → 100px)
+
+## Supabase PostgreSQL 마이그레이션
+- [ ] Drizzle 스키마를 MySQL에서 PostgreSQL 문법으로 변환
+- [ ] Supabase 연결 정보 설정 (DATABASE_URL)
+- [ ] PostgreSQL용 Drizzle 드라이버 설치
+- [ ] 마이그레이션 실행 및 테이블 생성
+- [ ] 기존 데이터 백업 및 이전 (필요시)
+- [ ] 모든 쿼리가 PostgreSQL에서 정상 작동하는지 테스트
+
+## Supabase PostgreSQL 마이그레이션 (수동 배포용)
+- [x] Drizzle 스키마를 MySQL에서 PostgreSQL 문법으로 변환
+- [x] PostgreSQL용 Drizzle 드라이버 설치 (postgres, drizzle-orm)
+- [x] 데이터베이스 연결 로직 업데이트 (postgres-js)
+- [x] MySQL 전용 문법을 PostgreSQL로 변환 (onDuplicateKeyUpdate → onConflictDoUpdate)
+- [x] insertId를 returning() 절로 변경
+- [x] 배포 가이드 문서 작성 (DEPLOYMENT.md)
+- [x] 마이그레이션 스크립트 작성 (migrate-to-supabase.mjs)
+- [x] Vercel 배포 설정 파일 생성 (vercel.json)
+- [x] Railway 배포 설정 파일 생성 (railway.json)
+- [x] PM2 설정 파일 생성 (ecosystem.config.js)
+- [ ] GitHub로 코드 export
+- [ ] Supabase에서 실제 마이그레이션 테스트
+- [ ] 배포 플랫폼에서 배포 테스트

@@ -1,15 +1,18 @@
 import { eq, desc, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
 import { InsertUser, users, agents, InsertAgent, Agent, questions, InsertQuestion, rounds, InsertRound, humanVotes, InsertHumanVote } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _client: ReturnType<typeof postgres> | null = null;
 
 // Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      _client = postgres(process.env.DATABASE_URL);
+      _db = drizzle(_client);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -68,7 +71,8 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       updateSet.lastSignedIn = new Date();
     }
 
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
+    await db.insert(users).values(values).onConflictDoUpdate({
+      target: users.openId,
       set: updateSet,
     });
   } catch (error) {
@@ -94,13 +98,10 @@ export async function createAgent(agent: InsertAgent): Promise<Agent> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const result = await db.insert(agents).values(agent);
-  const insertedId = Number(result[0].insertId);
+  const result = await db.insert(agents).values(agent).returning();
+  if (!result[0]) throw new Error("Failed to insert agent");
   
-  const inserted = await db.select().from(agents).where(eq(agents.id, insertedId)).limit(1);
-  if (!inserted[0]) throw new Error("Failed to retrieve inserted agent");
-  
-  return inserted[0];
+  return result[0];
 }
 
 export async function getAgentByApiKey(apiKey: string): Promise<Agent | undefined> {
@@ -182,8 +183,9 @@ export async function createQuestion(question: InsertQuestion): Promise<number> 
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const result = await db.insert(questions).values(question);
-  return Number(result[0].insertId);
+  const result = await db.insert(questions).values(question).returning();
+  if (!result[0]) throw new Error("Failed to insert question");
+  return result[0].id;
 }
 
 export async function updateQuestionLikes(id: number, likes: number, dislikes: number): Promise<void> {

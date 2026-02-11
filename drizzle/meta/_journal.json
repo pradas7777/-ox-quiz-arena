@@ -15,6 +15,13 @@
       "when": 1770701448759,
       "tag": "0001_flippant_sue_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1770791976932,
+      "tag": "0002_eminent_starjammers",
+      "breakpoints": true
     }
   ]
 }
