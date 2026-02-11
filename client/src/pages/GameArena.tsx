@@ -21,6 +21,13 @@ interface Agent {
   avatar?: string;
   hasMovedThisRound?: boolean;
   moveStartTime?: number;
+  startX?: number;
+  startY?: number;
+  controlPoint1X?: number;
+  controlPoint1Y?: number;
+  controlPoint2X?: number;
+  controlPoint2Y?: number;
+  moveProgress?: number;
 }
 
 interface GameState {
@@ -262,15 +269,52 @@ export default function GameArena() {
 
       // Draw O/X background zones
       const midX = canvas.width / 2;
+      const isResultPhase = gameState.phase === 'result';
+      const winningTeam = gameState.majorityChoice;
+      const pulseTime = Date.now() % 2000 / 2000; // 2 second cycle
+      const pulseIntensity = Math.sin(pulseTime * Math.PI * 2) * 0.5 + 0.5;
 
       // O Zone (left side)
-      ctx.fillStyle = 'rgba(0, 255, 255, 0.1)';
+      const oIsWinner = isResultPhase && winningTeam === 'O';
+      ctx.fillStyle = oIsWinner ? `rgba(0, 255, 255, ${0.1 + pulseIntensity * 0.3})` : 'rgba(0, 255, 255, 0.1)';
       ctx.fillRect(0, 0, midX, canvas.height);
-      ctx.strokeStyle = '#00ffff';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(midX / 2, canvas.height / 2, Math.min(midX, canvas.height) / 3, 0, Math.PI * 2);
-      ctx.stroke();
+      
+      // Victory pulse effect for O zone
+      if (oIsWinner) {
+        const pulseRadius = Math.min(midX, canvas.height) / 3 + pulseIntensity * 50;
+        ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth = 5 + pulseIntensity * 5;
+        ctx.shadowColor = '#00ffff';
+        ctx.shadowBlur = 30 + pulseIntensity * 20;
+        ctx.beginPath();
+        ctx.arc(midX / 2, canvas.height / 2, pulseRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        
+        // Firework particles for O zone
+        const particleCount = 20;
+        for (let i = 0; i < particleCount; i++) {
+          const angle = (i / particleCount) * Math.PI * 2 + pulseTime * Math.PI * 2;
+          const distance = 150 + Math.sin(pulseTime * Math.PI * 4 + i) * 50;
+          const px = midX / 2 + Math.cos(angle) * distance;
+          const py = canvas.height / 2 + Math.sin(angle) * distance;
+          const particleSize = 3 + Math.sin(pulseTime * Math.PI * 2 + i) * 2;
+          
+          ctx.fillStyle = '#00ffff';
+          ctx.shadowColor = '#00ffff';
+          ctx.shadowBlur = 15;
+          ctx.beginPath();
+          ctx.arc(px, py, particleSize, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+      } else {
+        ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(midX / 2, canvas.height / 2, Math.min(midX, canvas.height) / 3, 0, Math.PI * 2);
+        ctx.stroke();
+      }
 
       // Draw "O" text
       ctx.font = 'bold 120px Orbitron';
@@ -278,30 +322,67 @@ export default function GameArena() {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.shadowColor = '#00ffff';
-      ctx.shadowBlur = 20;
+      ctx.shadowBlur = oIsWinner ? 40 + pulseIntensity * 20 : 20;
       ctx.fillText('O', midX / 2, canvas.height / 2);
       ctx.shadowBlur = 0;
 
       // X Zone (right side)
-      ctx.fillStyle = 'rgba(255, 0, 255, 0.1)';
+      const xIsWinner = isResultPhase && winningTeam === 'X';
+      ctx.fillStyle = xIsWinner ? `rgba(255, 0, 255, ${0.1 + pulseIntensity * 0.3})` : 'rgba(255, 0, 255, 0.1)';
       ctx.fillRect(midX, 0, midX, canvas.height);
-      ctx.strokeStyle = '#ff00ff';
-      ctx.lineWidth = 3;
+      
       const xSize = Math.min(midX, canvas.height) / 3;
       const xCenterX = midX + midX / 2;
       const xCenterY = canvas.height / 2;
-      ctx.beginPath();
-      ctx.moveTo(xCenterX - xSize, xCenterY - xSize);
-      ctx.lineTo(xCenterX + xSize, xCenterY + xSize);
-      ctx.moveTo(xCenterX + xSize, xCenterY - xSize);
-      ctx.lineTo(xCenterX - xSize, xCenterY + xSize);
-      ctx.stroke();
+      
+      // Victory pulse effect for X zone
+      if (xIsWinner) {
+        const pulseSize = xSize + pulseIntensity * 50;
+        ctx.strokeStyle = '#ff00ff';
+        ctx.lineWidth = 5 + pulseIntensity * 5;
+        ctx.shadowColor = '#ff00ff';
+        ctx.shadowBlur = 30 + pulseIntensity * 20;
+        ctx.beginPath();
+        ctx.moveTo(xCenterX - pulseSize, xCenterY - pulseSize);
+        ctx.lineTo(xCenterX + pulseSize, xCenterY + pulseSize);
+        ctx.moveTo(xCenterX + pulseSize, xCenterY - pulseSize);
+        ctx.lineTo(xCenterX - pulseSize, xCenterY + pulseSize);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        
+        // Firework particles for X zone
+        const particleCount = 20;
+        for (let i = 0; i < particleCount; i++) {
+          const angle = (i / particleCount) * Math.PI * 2 + pulseTime * Math.PI * 2;
+          const distance = 150 + Math.sin(pulseTime * Math.PI * 4 + i) * 50;
+          const px = xCenterX + Math.cos(angle) * distance;
+          const py = xCenterY + Math.sin(angle) * distance;
+          const particleSize = 3 + Math.sin(pulseTime * Math.PI * 2 + i) * 2;
+          
+          ctx.fillStyle = '#ff00ff';
+          ctx.shadowColor = '#ff00ff';
+          ctx.shadowBlur = 15;
+          ctx.beginPath();
+          ctx.arc(px, py, particleSize, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+      } else {
+        ctx.strokeStyle = '#ff00ff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(xCenterX - xSize, xCenterY - xSize);
+        ctx.lineTo(xCenterX + xSize, xCenterY + xSize);
+        ctx.moveTo(xCenterX + xSize, xCenterY - xSize);
+        ctx.lineTo(xCenterX - xSize, xCenterY + xSize);
+        ctx.stroke();
+      }
 
       // Draw "X" text
       ctx.font = 'bold 120px Orbitron';
       ctx.fillStyle = '#ff00ff';
       ctx.shadowColor = '#ff00ff';
-      ctx.shadowBlur = 20;
+      ctx.shadowBlur = xIsWinner ? 40 + pulseIntensity * 20 : 20;
       ctx.fillText('X', xCenterX, xCenterY);
       ctx.shadowBlur = 0;
 
@@ -374,6 +455,12 @@ export default function GameArena() {
         });
       }
 
+      // Bezier curve helper function
+      const cubicBezier = (t: number, p0: number, p1: number, p2: number, p3: number) => {
+        const u = 1 - t;
+        return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3;
+      };
+
       // Update and draw agents
       gameState.agents.forEach(agent => {
         // Calculate target position based on choice (only once per round)
@@ -381,6 +468,27 @@ export default function GameArena() {
           const pos = findNonCollidingPosition(agent.choice, agent);
           agent.targetX = pos.x;
           agent.targetY = pos.y;
+          
+          // Initialize bezier curve control points
+          agent.startX = agent.x || midX;
+          agent.startY = agent.y || canvas.height / 2;
+          
+          // Create curved path with two control points
+          const dx = agent.targetX - agent.startX;
+          const dy = agent.targetY - agent.startY;
+          const midPointX = agent.startX + dx / 2;
+          const midPointY = agent.startY + dy / 2;
+          
+          // Add perpendicular offset for curve
+          const perpX = -dy * 0.3;
+          const perpY = dx * 0.3;
+          
+          agent.controlPoint1X = agent.startX + dx * 0.25 + perpX;
+          agent.controlPoint1Y = agent.startY + dy * 0.25 + perpY;
+          agent.controlPoint2X = agent.startX + dx * 0.75 + perpX;
+          agent.controlPoint2Y = agent.startY + dy * 0.75 + perpY;
+          
+          agent.moveProgress = 0;
         } else if (!agent.choice) {
           // No choice yet - center position
           if (!agent.targetX || !agent.targetY) {
@@ -393,25 +501,40 @@ export default function GameArena() {
         const targetX = agent.targetX || midX;
         const targetY = agent.targetY || canvas.height / 2;
 
-        // Smooth movement with slower speed
-        const currentX = agent.x || targetX;
-        const currentY = agent.y || targetY;
+        let newX = agent.x || targetX;
+        let newY = agent.y || targetY;
         
         // Only move if it's time for this agent to move (sequential)
-        let moveSpeed = 0;
-        if (agent.moveStartTime && now >= agent.moveStartTime) {
-          moveSpeed = 0.02; // Much slower movement (was 0.05)
-        } else if (!agent.moveStartTime) {
-          moveSpeed = 0.02; // Default slow movement for agents without choice
-        }
-        
-        const newX = currentX + (targetX - currentX) * moveSpeed;
-        const newY = currentY + (targetY - currentY) * moveSpeed;
-
-        // Check if agent has reached target
-        const distance = Math.sqrt((targetX - newX) ** 2 + (targetY - newY) ** 2);
-        if (distance < 2 && agent.choice && !agent.hasMovedThisRound) {
-          agent.hasMovedThisRound = true;
+        if (agent.moveStartTime && now >= agent.moveStartTime && agent.moveProgress !== undefined && agent.moveProgress < 1) {
+          // Bezier curve movement
+          agent.moveProgress = Math.min(1, agent.moveProgress + 0.015); // Slower progress
+          
+          const t = agent.moveProgress;
+          newX = cubicBezier(
+            t,
+            agent.startX || newX,
+            agent.controlPoint1X || newX,
+            agent.controlPoint2X || targetX,
+            targetX
+          );
+          newY = cubicBezier(
+            t,
+            agent.startY || newY,
+            agent.controlPoint1Y || newY,
+            agent.controlPoint2Y || targetY,
+            targetY
+          );
+          
+          // Check if agent has reached target
+          if (agent.moveProgress >= 1 && agent.choice && !agent.hasMovedThisRound) {
+            agent.hasMovedThisRound = true;
+            newX = targetX;
+            newY = targetY;
+          }
+        } else if (!agent.moveStartTime && (!agent.x || !agent.y)) {
+          // Initial positioning (no animation)
+          newX = targetX;
+          newY = targetY;
         }
 
         agent.x = newX;
@@ -639,7 +762,7 @@ export default function GameArena() {
                   <Zap className="w-5 h-5 text-primary" />
                   <h2 className="text-lg font-['Orbitron'] font-bold text-primary">{getPhaseText()}</h2>
                 </div>
-                {gameState.phase === 'answering' && (
+                {(gameState.phase === 'selecting' || gameState.phase === 'answering' || gameState.phase === 'commenting' || gameState.phase === 'result' || gameState.phase === 'voting') && (
                   <div className="flex items-center gap-2 px-4 py-2 neon-box rounded">
                     <Clock className="w-5 h-5 text-primary animate-pulse" />
                     <span className="text-2xl font-['Orbitron'] font-bold text-primary">{timer}s</span>
