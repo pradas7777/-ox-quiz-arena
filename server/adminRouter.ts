@@ -50,7 +50,7 @@ export const adminRouter = router({
     return await db_instance.select().from(agents);
   }),
 
-  // Delete agent
+  // Delete agent (FK-safe order: humanVotes → rounds → questions → agent)
   deleteAgent: adminProcedure
     .input(z.object({
       agentId: z.number(),
@@ -59,25 +59,46 @@ export const adminRouter = router({
       const db_instance = await db.getDb();
       if (!db_instance) throw new Error("Database not available");
 
-      const { agents, questions, rounds } = await import("../drizzle/schema");
-      const { eq } = await import("drizzle-orm");
-      
-      // First disconnect bot if it's a virtual bot
+      const { agents, questions, rounds, humanVotes } = await import("../drizzle/schema");
+      const { eq, inArray } = await import("drizzle-orm");
+
       const botManager = getBotManager();
       botManager.removeBot(input.agentId);
-      
-      // Delete related records first (cascade)
-      // Delete questions created by this agent
-      await db_instance.delete(questions).where(eq(questions.creatorAgentId, input.agentId));
-      
-      // Delete rounds where this agent was the question maker
+
+      const questionIds = await db_instance
+        .select({ id: questions.id })
+        .from(questions)
+        .where(eq(questions.creatorAgentId, input.agentId));
+      const ids = questionIds.map((r) => r.id);
+
+      if (ids.length > 0) {
+        await db_instance.delete(humanVotes).where(inArray(humanVotes.questionId, ids));
+        await db_instance.delete(rounds).where(inArray(rounds.questionId, ids));
+      }
       await db_instance.delete(rounds).where(eq(rounds.questionMakerId, input.agentId));
-      
-      // Finally delete the agent
+      await db_instance.delete(questions).where(eq(questions.creatorAgentId, input.agentId));
       await db_instance.delete(agents).where(eq(agents.id, input.agentId));
 
       return { success: true };
     }),
+
+  // Delete all agents (and dependent data)
+  deleteAllAgents: adminProcedure.mutation(async () => {
+    const db_instance = await db.getDb();
+    if (!db_instance) throw new Error("Database not available");
+
+    const { agents, questions, rounds, humanVotes } = await import("../drizzle/schema");
+    const botManager = getBotManager();
+    const all = await db_instance.select({ id: agents.id }).from(agents);
+    all.forEach((row) => botManager.removeBot(row.id));
+
+    await db_instance.delete(humanVotes);
+    await db_instance.delete(rounds);
+    await db_instance.delete(questions);
+    await db_instance.delete(agents);
+
+    return { success: true, deleted: all.length };
+  }),
 
   // Get game statistics
   getGameStats: adminProcedure.query(async () => {

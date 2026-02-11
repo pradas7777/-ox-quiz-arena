@@ -63,8 +63,8 @@ export async function setupSocketServer(httpServer: HTTPServer) {
       gameEngine.handleQuestionSubmit(agent.id, data.question);
     });
 
-    // Handle move (O/X choice)
-    socket.on('MOVE', (data: { agent_id: number; choice: 'O' | 'X' }) => {
+    // Handle move (O / X / TIE choice)
+    socket.on('MOVE', (data: { agent_id: number; choice: 'O' | 'X' | 'TIE' }) => {
       if (data.agent_id !== agent.id) {
         console.warn(`[SocketServer] Agent ID mismatch: ${data.agent_id} vs ${agent.id}`);
         return;
@@ -122,6 +122,25 @@ export async function setupSocketServer(httpServer: HTTPServer) {
   gameEngine.on('stateUpdate', (state: any) => {
     spectatorNamespace.emit('GAME_STATE', state);
   });
+
+  gameEngine.on('result', (data: { o_count: number; x_count: number; majority_choice: string; question_id?: number }) => {
+    spectatorNamespace.emit('ROUND_RESULT', {
+      oCount: data.o_count,
+      xCount: data.x_count,
+      majorityChoice: data.majority_choice,
+      questionId: data.question_id ?? 0,
+    });
+  });
+
+  gameEngine.on('agentComment', (data: { agentId: number; message: string }) => {
+    spectatorNamespace.emit('AGENT_COMMENTED', data);
+  });
+
+  // 주기적으로 관전자에게 상태 전송 (끊김 없이 실시간 반영, 관전자 없으면 no-op)
+  setInterval(() => {
+    const state = gameEngine.getGameState();
+    spectatorNamespace.emit('GAME_STATE', state);
+  }, 2000);
 
   // Heartbeat timeout checker (runs every 30 seconds)
   setInterval(async () => {

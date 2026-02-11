@@ -61,6 +61,13 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     } else if (user.openId === ENV.ownerOpenId) {
       values.role = 'admin';
       updateSet.role = 'admin';
+    } else {
+      // First user in the DB becomes admin when no admin exists (e.g. local dev)
+      const adminCount = await db.select().from(users).where(eq(users.role, 'admin')).limit(1);
+      if (adminCount.length === 0) {
+        values.role = 'admin';
+        updateSet.role = 'admin';
+      }
     }
 
     if (!values.lastSignedIn) {
@@ -127,7 +134,7 @@ export async function updateAgentConnection(id: number, isConnected: boolean): P
   await db.update(agents)
     .set({ 
       isConnected, 
-      lastHeartbeat: isConnected ? new Date() : sql`lastHeartbeat`
+      lastHeartbeat: isConnected ? new Date() : sql`${agents.lastHeartbeat}`
     })
     .where(eq(agents.id, id));
 }
@@ -146,7 +153,7 @@ export async function updateAgentScore(id: number, scoreChange: number): Promise
   if (!db) return;
 
   await db.update(agents)
-    .set({ score: sql`score + ${scoreChange}` })
+    .set({ score: sql`${agents.score} + ${scoreChange}` })
     .where(eq(agents.id, id));
 }
 
@@ -154,10 +161,10 @@ export async function updateAgentStats(id: number, stats: { wins?: number; losse
   const db = await getDb();
   if (!db) return;
 
-  const updates: Record<string, any> = {};
-  if (stats.wins !== undefined) updates.wins = sql`wins + ${stats.wins}`;
-  if (stats.losses !== undefined) updates.losses = sql`losses + ${stats.losses}`;
-  if (stats.questionsAsked !== undefined) updates.questionsAsked = sql`questionsAsked + ${stats.questionsAsked}`;
+  const updates: Record<string, unknown> = {};
+  if (stats.wins !== undefined) updates.wins = sql`${agents.wins} + ${stats.wins}`;
+  if (stats.losses !== undefined) updates.losses = sql`${agents.losses} + ${stats.losses}`;
+  if (stats.questionsAsked !== undefined) updates.questionsAsked = sql`${agents.questionsAsked} + ${stats.questionsAsked}`;
 
   if (Object.keys(updates).length > 0) {
     await db.update(agents).set(updates).where(eq(agents.id, id));
@@ -201,7 +208,7 @@ export async function getTopQuestions(limit: number = 10) {
   const db = await getDb();
   if (!db) return [];
 
-  return await db.select().from(questions).orderBy(desc(sql`likes - dislikes`)).limit(limit);
+  return await db.select().from(questions).orderBy(desc(sql`${questions.likes} - ${questions.dislikes}`)).limit(limit);
 }
 
 // Round queries

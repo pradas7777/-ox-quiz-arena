@@ -1,6 +1,6 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@300;400;500;600;700&display=swap');
 
 @custom-variant dark (&:is(.dark *));
 
@@ -43,83 +43,85 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+/* =============================================================================
+   테마 컬러 (HEX) — 아래 값만 수정하면 전체 테마 색상이 바뀝니다.
+   투명도가 필요하면 8자리 HEX 사용 (예: #94f81480 = 50% 투명).
+   ============================================================================= */
 :root {
-  /* Cyberpunk Neon Green (#94f814) as primary */
-  --primary: oklch(0.9 0.3 127);
-  --primary-foreground: oklch(0.1 0 0);
-  
-  /* Neon Cyan for secondary */
-  --secondary: oklch(0.8 0.2 200);
-  --secondary-foreground: oklch(0.1 0 0);
-  
-  /* Neon Pink for accent */
-  --accent: oklch(0.7 0.3 330);
-  --accent-foreground: oklch(1 0 0);
-  
-  /* Dark cyberpunk backgrounds */
-  --background: oklch(0.1 0 0);
-  --foreground: oklch(0.9 0.3 127);
-  
-  --card: oklch(0.15 0.02 270);
-  --card-foreground: oklch(0.9 0.3 127);
-  
-  --popover: oklch(0.12 0.02 270);
-  --popover-foreground: oklch(0.9 0.3 127);
-  
-  --muted: oklch(0.2 0.02 270);
-  --muted-foreground: oklch(0.6 0.2 127);
-  
-  --destructive: oklch(0.6 0.3 20);
-  --destructive-foreground: oklch(1 0 0);
-  
-  --border: oklch(0.9 0.3 127 / 0.5);
-  --input: oklch(0.2 0.02 270);
-  --ring: oklch(0.9 0.3 127);
-  
-  --chart-1: oklch(0.9 0.3 127);
-  --chart-2: oklch(0.8 0.2 200);
-  --chart-3: oklch(0.7 0.3 330);
-  --chart-4: oklch(0.7 0.2 280);
-  --chart-5: oklch(0.8 0.2 60);
-  
-  --sidebar: oklch(0.12 0.02 270);
-  --sidebar-foreground: oklch(0.9 0.3 127);
-  --sidebar-primary: oklch(0.9 0.3 127);
-  --sidebar-primary-foreground: oklch(0.1 0 0);
-  --sidebar-accent: oklch(0.2 0.02 270);
-  --sidebar-accent-foreground: oklch(0.9 0.3 127);
-  --sidebar-border: oklch(0.9 0.3 127 / 0.3);
-  --sidebar-ring: oklch(0.9 0.3 127);
-  
+  /* 메인 컬러 */
+  --primary: #94f814;
+  --primary-foreground: #0a0a0a;
+  --secondary: #22d3ee;
+  --secondary-foreground: #0a0a0a;
+  --accent: #f472b6;
+  --accent-foreground: #ffffff;
+
+  /* 배경 / 글자 */
+  --background: #0a0a0a;
+  --foreground: #c8e4a4;
+
+  /* 카드 / 팝오버 */
+  --card: #1a1a2e;
+  --card-foreground: #94f814;
+  --popover: #16162a;
+  --popover-foreground: #94f814;
+
+  /* 보조 (뮤트, 경고, 입력) */
+  --muted: #27272a;
+  --muted-foreground: #7cb342;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #94f81480;
+  --input: #27272a;
+  --ring: #94f814;
+
+  /* 차트 (리더보드 등) */
+  --chart-1: #94f814;
+  --chart-2: #22d3ee;
+  --chart-3: #f472b6;
+  --chart-4: #a78bfa;
+  --chart-5: #facc15;
+
+  /* 사이드바 */
+  --sidebar: #16162a;
+  --sidebar-foreground: #94f814;
+  --sidebar-primary: #94f814;
+  --sidebar-primary-foreground: #0a0a0a;
+  --sidebar-accent: #27272a;
+  --sidebar-accent-foreground: #94f814;
+  --sidebar-border: #94f8144d;
+  --sidebar-ring: #94f814;
+
   --radius: 0.25rem;
 }
 
 .dark {
-  --primary: oklch(0.9 0.3 127);
-  --primary-foreground: oklch(0.1 0 0);
-  --secondary: oklch(0.8 0.2 200);
-  --secondary-foreground: oklch(0.1 0 0);
-  --accent: oklch(0.7 0.3 330);
-  --accent-foreground: oklch(1 0 0);
-  --background: oklch(0.1 0 0);
-  --foreground: oklch(0.9 0.3 127);
-  --card: oklch(0.15 0.02 270);
-  --card-foreground: oklch(0.9 0.3 127);
-  --popover: oklch(0.12 0.02 270);
-  --popover-foreground: oklch(0.9 0.3 127);
-  --muted: oklch(0.2 0.02 270);
-  --muted-foreground: oklch(0.6 0.2 127);
-  --destructive: oklch(0.6 0.3 20);
-  --destructive-foreground: oklch(1 0 0);
-  --border: oklch(0.9 0.3 127 / 0.5);
-  --input: oklch(0.2 0.02 270);
-  --ring: oklch(0.9 0.3 127);
-  --sidebar: oklch(0.12 0.02 270);
-  --sidebar-foreground: oklch(0.9 0.3 127);
-  --sidebar-accent: oklch(0.2 0.02 270);
-  --sidebar-accent-foreground: oklch(0.9 0.3 127);
-  --sidebar-border: oklch(0.9 0.3 127 / 0.3);
-  --sidebar-ring: oklch(0.9 0.3 127);
+  /* 다크 모드도 동일한 HEX 사용 (필요 시 여기만 다르게 지정) */
+  --primary: #94f814;
+  --primary-foreground: #0a0a0a;
+  --secondary: #ffffff;
+  --secondary-foreground: #0a0a0a;
+  --accent: #f472b6;
+  --accent-foreground: #ffffff;
+  --background: #0a0a0a;
+  --foreground: #94f814;
+  --card: #1a1a2e;
+  --card-foreground: #94f814;
+  --popover: #16162a;
+  --popover-foreground: #94f814;
+  --muted: #27272a;
+  --muted-foreground: #7cb342;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #94f81480;
+  --input: #27272a;
+  --ring: #94f814;
+  --sidebar: #16162a;
+  --sidebar-foreground: #94f814;
+  --sidebar-accent: #27272a;
+  --sidebar-accent-foreground: #94f814;
+  --sidebar-border: #94f8144d;
+  --sidebar-ring: #94f814;
 }
 
 @layer base {

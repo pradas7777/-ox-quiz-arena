@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { io, Socket } from "socket.io-client";
+import { EditableBox } from "@/components/design/EditableBox";
+import { EditableText } from "@/components/design/EditableText";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ThumbsUp, ThumbsDown, Trophy, Clock, Zap } from "lucide-react";
+import { ThumbsUp, ThumbsDown, Trophy, Clock, Zap, Home, MessageSquare } from "lucide-react";
+import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
@@ -15,7 +18,7 @@ interface Agent {
   y: number;
   targetX: number;
   targetY: number;
-  choice: 'O' | 'X' | null;
+  choice: 'O' | 'X' | 'TIE' | null;
   comment: string | null;
   color?: string;
   avatar?: string;
@@ -32,7 +35,7 @@ interface Agent {
 
 interface GameState {
   round: number;
-  phase: 'selecting' | 'answering' | 'commenting' | 'result' | 'voting';
+  phase: 'selecting' | 'answering' | 'result' | 'voting';
   question: string | null;
   questionMaker: string | null;
   agents: Agent[];
@@ -40,6 +43,8 @@ interface GameState {
   xCount?: number;
   majorityChoice?: string;
   questionId?: number;
+  /** 서버 기준 현재 단계 종료 시각(ms). 남은 초 계산용 */
+  phaseEndsAt?: number;
 }
 
 const AVATAR_EMOJIS = ['🤖', '👾', '🎮', '💀', '👽', '🦾', '🧠', '⚡', '🔥', '💎', '🌟', '⭐', '🎯', '🎲', '🎪'];
@@ -52,10 +57,29 @@ function getAgentCharacter(agentId: number) {
   };
 }
 
+/** 애니메이션용 에이전트별 위치/진행 상태 (서버 state 갱신 시에도 유지) */
+interface AgentAnimState {
+  x: number;
+  y: number;
+  targetX: number;
+  targetY: number;
+  moveProgress: number;
+  moveStartTime?: number;
+  startX: number;
+  startY: number;
+  controlPoint1X?: number;
+  controlPoint1Y?: number;
+  controlPoint2X?: number;
+  controlPoint2Y?: number;
+  hasMovedThisRound?: boolean;
+}
+
 export default function GameArena() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const animationFrameRef = useRef<number | undefined>(undefined);
+  const gameStateRef = useRef<GameState>({ round: 0, phase: 'selecting', question: null, questionMaker: null, agents: [] });
+  const agentsAnimRef = useRef<Map<number, AgentAnimState>>(new Map());
   
   const [gameState, setGameState] = useState<GameState>({
     round: 0,
@@ -71,6 +95,25 @@ export default function GameArena() {
   const [agentLeaderboard, setAgentLeaderboard] = useState<any[]>([]);
   const [questionLeaderboard, setQuestionLeaderboard] = useState<any[]>([]);
   const [roundHistory, setRoundHistory] = useState<any[]>([]);
+
+  // Keep ref in sync so canvas loop always sees latest state without restarting
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
+
+  // 실시간 남은 초 동기화: 서버 phaseEndsAt 기준으로 1초마다 갱신
+  useEffect(() => {
+    const tick = () => {
+      const state = gameStateRef.current;
+      if (state.phaseEndsAt != null && state.phaseEndsAt > 0) {
+        const remaining = Math.max(0, Math.ceil((state.phaseEndsAt - Date.now()) / 1000));
+        setTimer(remaining);
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   // Fetch round history
   const { data: historyData } = trpc.game.getRoundHistory.useQuery(undefined, {
@@ -98,21 +141,24 @@ export default function GameArena() {
     socketRef.current = socket;
 
     socket.on('connect', () => {
-      console.log('Connected to game server');
-      toast.success('Connected to game server');
-      // Request current game state
       socket.emit('REQUEST_GAME_STATE');
     });
 
     socket.on('GAME_STATE', (state: GameState) => {
       console.log('Received GAME_STATE:', state);
-      // Assign characters to agents
       state.agents = state.agents.map(agent => ({
         ...agent,
         ...getAgentCharacter(agent.id),
       }));
       console.log('Agents with characters:', state.agents);
       setGameState(state);
+      if (state.phase === 'selecting') {
+        agentsAnimRef.current.clear();
+      }
+      if (state.phaseEndsAt != null && state.phaseEndsAt > 0) {
+        const remaining = Math.max(0, Math.ceil((state.phaseEndsAt - Date.now()) / 1000));
+        setTimer(remaining);
+      }
     });
 
     socket.on('AGENT_JOINED', (data: { agent: Agent }) => {
@@ -129,6 +175,7 @@ export default function GameArena() {
     });
 
     socket.on('AGENT_LEFT', (data: { agentId: number }) => {
+      agentsAnimRef.current.delete(data.agentId);
       setGameState(prev => ({
         ...prev,
         agents: prev.agents.filter(a => a.id !== data.agentId),
@@ -152,7 +199,6 @@ export default function GameArena() {
           comment: null,
         })),
       }));
-      setTimer(10);
     });
 
     socket.on('QUESTION_SUBMITTED', (data: { question: string }) => {
@@ -161,7 +207,6 @@ export default function GameArena() {
         phase: 'answering',
         question: data.question,
       }));
-      setTimer(15);
     });
 
     socket.on('AGENT_VOTED', (data: { agentId: number; choice: 'O' | 'X' }) => {
@@ -174,8 +219,7 @@ export default function GameArena() {
     });
 
     socket.on('VOTING_ENDED', () => {
-      setGameState(prev => ({ ...prev, phase: 'commenting' }));
-      setTimer(10);
+      setGameState(prev => ({ ...prev, phase: 'voting' }));
     });
 
     socket.on('AGENT_COMMENTED', (data: { agentId: number; comment: string }) => {
@@ -196,16 +240,10 @@ export default function GameArena() {
         majorityChoice: data.majorityChoice,
         questionId: data.questionId,
       }));
-      setTimer(60); // Show result for 60 seconds
     });
 
     socket.on('HUMAN_VOTING_STARTED', () => {
       setGameState(prev => ({ ...prev, phase: 'voting' }));
-      setTimer(10);
-    });
-
-    socket.on('TIMER_UPDATE', (data: { seconds: number }) => {
-      setTimer(data.seconds);
     });
 
     socket.on('AGENT_UPDATED', (data: { agent: Agent }) => {
@@ -219,7 +257,15 @@ export default function GameArena() {
       }));
     });
 
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && socketRef.current?.connected) {
+        socketRef.current.emit('REQUEST_GAME_STATE');
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
     return () => {
+      document.removeEventListener('visibilitychange', onVisible);
       socket.disconnect();
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
@@ -265,126 +311,37 @@ export default function GameArena() {
     window.addEventListener('resize', resizeCanvas);
 
     const animate = () => {
+      const state = gameStateRef.current;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // Draw O/X background zones
       const midX = canvas.width / 2;
-      const isResultPhase = gameState.phase === 'result';
-      const winningTeam = gameState.majorityChoice;
+      const isResultPhase = state.phase === 'result';
+      const winningTeam = state.majorityChoice;
       const pulseTime = Date.now() % 2000 / 2000; // 2 second cycle
       const pulseIntensity = Math.sin(pulseTime * Math.PI * 2) * 0.5 + 0.5;
 
-      // O Zone (left side)
+      // O Zone (left side) - background only, small center label
       const oIsWinner = isResultPhase && winningTeam === 'O';
       ctx.fillStyle = oIsWinner ? `rgba(0, 255, 255, ${0.1 + pulseIntensity * 0.3})` : 'rgba(0, 255, 255, 0.1)';
       ctx.fillRect(0, 0, midX, canvas.height);
-      
-      // Victory pulse effect for O zone
-      if (oIsWinner) {
-        const pulseRadius = Math.min(midX, canvas.height) / 3 + pulseIntensity * 50;
-        ctx.strokeStyle = '#00ffff';
-        ctx.lineWidth = 5 + pulseIntensity * 5;
-        ctx.shadowColor = '#00ffff';
-        ctx.shadowBlur = 30 + pulseIntensity * 20;
-        ctx.beginPath();
-        ctx.arc(midX / 2, canvas.height / 2, pulseRadius, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-        
-        // Firework particles for O zone
-        const particleCount = 20;
-        for (let i = 0; i < particleCount; i++) {
-          const angle = (i / particleCount) * Math.PI * 2 + pulseTime * Math.PI * 2;
-          const distance = 150 + Math.sin(pulseTime * Math.PI * 4 + i) * 50;
-          const px = midX / 2 + Math.cos(angle) * distance;
-          const py = canvas.height / 2 + Math.sin(angle) * distance;
-          const particleSize = 3 + Math.sin(pulseTime * Math.PI * 2 + i) * 2;
-          
-          ctx.fillStyle = '#00ffff';
-          ctx.shadowColor = '#00ffff';
-          ctx.shadowBlur = 15;
-          ctx.beginPath();
-          ctx.arc(px, py, particleSize, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.shadowBlur = 0;
-        }
-      } else {
-        ctx.strokeStyle = '#00ffff';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(midX / 2, canvas.height / 2, Math.min(midX, canvas.height) / 3, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-
-      // Draw "O" text
       ctx.font = 'bold 120px Orbitron';
       ctx.fillStyle = '#00ffff';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.shadowColor = '#00ffff';
-      ctx.shadowBlur = oIsWinner ? 40 + pulseIntensity * 20 : 20;
       ctx.fillText('O', midX / 2, canvas.height / 2);
-      ctx.shadowBlur = 0;
 
-      // X Zone (right side)
+      // X Zone (right side) - background only, small center label
       const xIsWinner = isResultPhase && winningTeam === 'X';
       ctx.fillStyle = xIsWinner ? `rgba(255, 0, 255, ${0.1 + pulseIntensity * 0.3})` : 'rgba(255, 0, 255, 0.1)';
       ctx.fillRect(midX, 0, midX, canvas.height);
-      
-      const xSize = Math.min(midX, canvas.height) / 3;
       const xCenterX = midX + midX / 2;
       const xCenterY = canvas.height / 2;
-      
-      // Victory pulse effect for X zone
-      if (xIsWinner) {
-        const pulseSize = xSize + pulseIntensity * 50;
-        ctx.strokeStyle = '#ff00ff';
-        ctx.lineWidth = 5 + pulseIntensity * 5;
-        ctx.shadowColor = '#ff00ff';
-        ctx.shadowBlur = 30 + pulseIntensity * 20;
-        ctx.beginPath();
-        ctx.moveTo(xCenterX - pulseSize, xCenterY - pulseSize);
-        ctx.lineTo(xCenterX + pulseSize, xCenterY + pulseSize);
-        ctx.moveTo(xCenterX + pulseSize, xCenterY - pulseSize);
-        ctx.lineTo(xCenterX - pulseSize, xCenterY + pulseSize);
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-        
-        // Firework particles for X zone
-        const particleCount = 20;
-        for (let i = 0; i < particleCount; i++) {
-          const angle = (i / particleCount) * Math.PI * 2 + pulseTime * Math.PI * 2;
-          const distance = 150 + Math.sin(pulseTime * Math.PI * 4 + i) * 50;
-          const px = xCenterX + Math.cos(angle) * distance;
-          const py = xCenterY + Math.sin(angle) * distance;
-          const particleSize = 3 + Math.sin(pulseTime * Math.PI * 2 + i) * 2;
-          
-          ctx.fillStyle = '#ff00ff';
-          ctx.shadowColor = '#ff00ff';
-          ctx.shadowBlur = 15;
-          ctx.beginPath();
-          ctx.arc(px, py, particleSize, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.shadowBlur = 0;
-        }
-      } else {
-        ctx.strokeStyle = '#ff00ff';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(xCenterX - xSize, xCenterY - xSize);
-        ctx.lineTo(xCenterX + xSize, xCenterY + xSize);
-        ctx.moveTo(xCenterX + xSize, xCenterY - xSize);
-        ctx.lineTo(xCenterX - xSize, xCenterY + xSize);
-        ctx.stroke();
-      }
-
-      // Draw "X" text
       ctx.font = 'bold 120px Orbitron';
       ctx.fillStyle = '#ff00ff';
-      ctx.shadowColor = '#ff00ff';
-      ctx.shadowBlur = xIsWinner ? 40 + pulseIntensity * 20 : 20;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
       ctx.fillText('X', xCenterX, xCenterY);
-      ctx.shadowBlur = 0;
 
       // Draw center divider
       ctx.strokeStyle = '#94f814';
@@ -396,27 +353,51 @@ export default function GameArena() {
       ctx.stroke();
       ctx.setLineDash([]);
 
+      // TIE zone: center-top rectangle (~2x previous area), gold
+      const tieW = Math.min(midX * 0.5, 220);
+      const tieH = Math.min(canvas.height * 0.18, 120);
+      const tieX = midX - tieW / 2;
+      const tieY = 16;
+      const tieCenterX = midX;
+      const tieCenterY = tieY + tieH / 2;
+      const tieIsWinner = isResultPhase && winningTeam === 'TIE';
+      ctx.fillStyle = tieIsWinner ? `rgba(255, 215, 0, ${0.15 + pulseIntensity * 0.25})` : 'rgba(255, 215, 0, 0.08)';
+      ctx.beginPath();
+      ctx.roundRect(tieX, tieY, tieW, tieH, 8);
+      ctx.fill();
+      ctx.strokeStyle = '#ffd700';
+      ctx.lineWidth = tieIsWinner ? 4 : 2;
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = tieIsWinner ? 20 : 8;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 22px Orbitron';
+      ctx.fillStyle = '#ffd700';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('TIE', tieCenterX, tieCenterY);
+
       // Helper function to check collision
-      const checkCollision = (x: number, y: number, excludeAgent: Agent) => {
-        const minDistance = 100; // Increased minimum distance between agents
-        return gameState.agents.some(other => {
-          if (other.id === excludeAgent.id) return false;
-          if (!other.x || !other.y) return false;
-          const dx = other.x - x;
-          const dy = other.y - y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          return distance < minDistance;
-        });
+      const checkCollision = (x: number, y: number, excludeAgentId: number) => {
+        const minDistance = 100;
+        for (const [id, anim] of agentsAnimRef.current) {
+          if (id === excludeAgentId) continue;
+          const dx = anim.x - x;
+          const dy = anim.y - y;
+          if (Math.sqrt(dx * dx + dy * dy) < minDistance) return true;
+        }
+        return false;
       };
 
-      // Grid-based positioning helper
-      const createGridPositions = (choice: 'O' | 'X' | null) => {
+      // Grid-based positioning helper (O / X / TIE / null=center)
+      const createGridPositions = (choice: 'O' | 'X' | 'TIE' | null) => {
         const positions: { x: number; y: number }[] = [];
         const padding = 80;
-        const spacing = 120; // Grid spacing
-        
+        const spacing = 120;
+        const cx = midX;
+        const cy = canvas.height / 2;
+
         if (choice === 'O') {
-          // O zone (left side)
           const cols = Math.floor((midX - padding * 2) / spacing);
           const rows = Math.floor((canvas.height - padding * 2) / spacing);
           for (let row = 0; row < rows; row++) {
@@ -428,7 +409,6 @@ export default function GameArena() {
             }
           }
         } else if (choice === 'X') {
-          // X zone (right side)
           const cols = Math.floor((midX - padding * 2) / spacing);
           const rows = Math.floor((canvas.height - padding * 2) / spacing);
           for (let row = 0; row < rows; row++) {
@@ -439,8 +419,19 @@ export default function GameArena() {
               });
             }
           }
+        } else if (choice === 'TIE') {
+          const tieW = Math.min(midX * 0.5, 220);
+          const tieH = Math.min(canvas.height * 0.18, 120);
+          const tieX = midX - tieW / 2;
+          const tieY = 16;
+          const pad = 20;
+          const step = 28;
+          for (let y = tieY + pad; y < tieY + tieH - pad; y += step) {
+            for (let x = tieX + pad; x < tieX + tieW - pad; x += step) {
+              positions.push({ x, y });
+            }
+          }
         } else {
-          // Center zone
           const cols = 3;
           const rows = 3;
           for (let row = 0; row < rows; row++) {
@@ -452,28 +443,24 @@ export default function GameArena() {
             }
           }
         }
-        
-        // Shuffle positions for randomness
+
         for (let i = positions.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
           [positions[i], positions[j]] = [positions[j], positions[i]];
         }
-        
         return positions;
       };
 
-      // Helper function to find non-colliding position using grid
-      const findNonCollidingPosition = (choice: 'O' | 'X' | null, agent: Agent) => {
+      const findNonCollidingPosition = (choice: 'O' | 'X' | 'TIE' | null, excludeAgentId: number) => {
         const gridPositions = createGridPositions(choice);
         
         // Try grid positions first
         for (const pos of gridPositions) {
-          if (!checkCollision(pos.x, pos.y, agent)) {
+          if (!checkCollision(pos.x, pos.y, excludeAgentId)) {
             return pos;
           }
         }
         
-        // Fallback: try random positions with larger spread
         for (let i = 0; i < 50; i++) {
           let x, y;
           if (choice === 'O') {
@@ -482,22 +469,31 @@ export default function GameArena() {
           } else if (choice === 'X') {
             x = Math.random() * (midX - 160) + midX + 80;
             y = Math.random() * (canvas.height - 160) + 80;
+          } else if (choice === 'TIE') {
+            const tieW = Math.min(midX * 0.5, 220);
+            const tieH = Math.min(canvas.height * 0.18, 120);
+            const tieX = midX - tieW / 2;
+            const tieY = 16;
+            x = tieX + 20 + Math.random() * (tieW - 40);
+            y = tieY + 20 + Math.random() * (tieH - 40);
           } else {
             x = midX + (Math.random() - 0.5) * 200;
             y = canvas.height / 2 + (Math.random() - 0.5) * 200;
           }
           
-          if (!checkCollision(x, y, agent)) {
+          if (!checkCollision(x, y, excludeAgentId)) {
             return { x, y };
           }
         }
         
-        // Last resort: return position with jitter to avoid exact overlap
         const jitter = () => (Math.random() - 0.5) * 50;
         if (choice === 'O') {
           return { x: midX / 2 + jitter(), y: canvas.height / 2 + jitter() };
         } else if (choice === 'X') {
           return { x: midX + midX / 2 + jitter(), y: canvas.height / 2 + jitter() };
+        } else if (choice === 'TIE') {
+          const tieH = Math.min(canvas.height * 0.18, 120);
+          return { x: midX + jitter(), y: 16 + tieH / 2 + jitter() };
         } else {
           return { x: midX + jitter(), y: canvas.height / 2 + jitter() };
         }
@@ -505,17 +501,21 @@ export default function GameArena() {
 
       // Sequential movement: assign move start times
       const now = Date.now();
-      const votingPhase = gameState.phase === 'answering';
+      const votingPhase = state.phase === 'answering';
       
       if (votingPhase) {
-        const agentsWithChoice = gameState.agents.filter(a => a.choice && !a.hasMovedThisRound);
+        const agentsWithChoice = state.agents.filter(a => {
+          const anim = agentsAnimRef.current.get(a.id);
+          return a.choice && !(anim?.hasMovedThisRound);
+        });
         const totalAgents = agentsWithChoice.length;
-        const movementDuration = 10000; // 10 seconds for voting phase
+        const movementDuration = 20000;
         const delayPerAgent = totalAgents > 0 ? movementDuration / totalAgents : 0;
         
         agentsWithChoice.forEach((agent, index) => {
-          if (!agent.moveStartTime) {
-            agent.moveStartTime = now + (index * delayPerAgent);
+          const anim = agentsAnimRef.current.get(agent.id);
+          if (anim && anim.moveStartTime == null) {
+            anim.moveStartTime = now + (index * delayPerAgent);
           }
         });
       }
@@ -526,107 +526,150 @@ export default function GameArena() {
         return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3;
       };
 
-      // Update and draw agents
-      gameState.agents.forEach(agent => {
-        // Calculate target position based on choice (only once per round)
-        if (agent.choice && !agent.hasMovedThisRound && (!agent.targetX || !agent.targetY || agent.choice !== (agent.targetX > midX ? 'X' : 'O'))) {
-          const pos = findNonCollidingPosition(agent.choice, agent);
-          agent.targetX = pos.x;
-          agent.targetY = pos.y;
-          
-          // Initialize bezier curve control points
-          agent.startX = agent.x || midX;
-          agent.startY = agent.y || canvas.height / 2;
-          
-          // Create curved path with two control points
-          const dx = agent.targetX - agent.startX;
-          const dy = agent.targetY - agent.startY;
-          
-          // Add perpendicular offset for curve (more dramatic)
-          const perpX = -dy * 0.4;
-          const perpY = dx * 0.4;
-          
-          agent.controlPoint1X = agent.startX + dx * 0.25 + perpX;
-          agent.controlPoint1Y = agent.startY + dy * 0.25 + perpY;
-          agent.controlPoint2X = agent.startX + dx * 0.75 + perpX;
-          agent.controlPoint2Y = agent.startY + dy * 0.75 + perpY;
-          
-          agent.moveProgress = 0;
-        } else if (!agent.choice) {
-          // No choice yet - center position
-          if (!agent.targetX || !agent.targetY) {
-            const pos = findNonCollidingPosition(null, agent);
-            agent.targetX = pos.x;
-            agent.targetY = pos.y;
-          }
+      // Snapshot positions at frame start so collision checks are fair (no order dependency)
+      const positionSnapshot = new Map<number, { x: number; y: number }>();
+      for (const [id, a] of agentsAnimRef.current) {
+        positionSnapshot.set(id, { x: a.x, y: a.y });
+      }
+
+      const agentSize = 40;
+      const bubblePadding = 10;
+      const bubbleMaxWidth = 200;
+      const bubbleLineHeight = 16;
+      const bubbleGap = 8;
+      const placedBubbleRects: { x: number; y: number; w: number; h: number }[] = [];
+
+      const rectsOverlap = (a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) => {
+        return a.x < b.x + b.w + bubbleGap && a.x + a.w + bubbleGap > b.x &&
+          a.y < b.y + b.h + bubbleGap && a.y + a.h + bubbleGap > b.y;
+      };
+      const anyOverlap = (rect: { x: number; y: number; w: number; h: number }) =>
+        placedBubbleRects.some(placed => rectsOverlap(rect, placed));
+
+      // Update and draw agents (use ref so animation state survives server state updates)
+      const phaseAlreadyMoved = state.phase === 'result' || state.phase === 'voting';
+      state.agents.forEach(agent => {
+        let anim = agentsAnimRef.current.get(agent.id);
+        if (!anim) {
+          const isTieChoice = agent.choice === 'TIE';
+          const targetX = isTieChoice ? midX : (agent.targetX ?? midX);
+          const targetY = isTieChoice ? tieCenterY : (agent.targetY ?? canvas.height / 2);
+          const alreadyAtTarget = phaseAlreadyMoved && agent.choice && (agent.targetX != null || isTieChoice) && (agent.targetY != null || isTieChoice);
+          anim = {
+            x: alreadyAtTarget ? targetX : (agent.x ?? midX),
+            y: alreadyAtTarget ? targetY : (agent.y ?? canvas.height / 2),
+            targetX,
+            targetY,
+            moveProgress: alreadyAtTarget ? 1 : 0,
+            startX: agent.x ?? midX,
+            startY: agent.y ?? canvas.height / 2,
+            hasMovedThisRound: !!alreadyAtTarget,
+          };
+          agentsAnimRef.current.set(agent.id, anim);
         }
 
-        const targetX = agent.targetX || midX;
-        const targetY = agent.targetY || canvas.height / 2;
+        const isTieChoice = agent.choice === 'TIE';
+        const serverTargetX = isTieChoice ? midX : (agent.targetX ?? midX);
+        const serverTargetY = isTieChoice ? tieCenterY : (agent.targetY ?? canvas.height / 2);
+        const targetChanged = anim.targetX !== serverTargetX || anim.targetY !== serverTargetY;
 
-        let newX = agent.x || targetX;
-        let newY = agent.y || targetY;
-        
-        // Only move if it's time for this agent to move (sequential)
-        if (agent.moveStartTime && now >= agent.moveStartTime && agent.moveProgress !== undefined && agent.moveProgress < 1) {
-          // Bezier curve movement
-          agent.moveProgress = Math.min(1, agent.moveProgress + 0.015); // Slower progress
-          
-          const t = agent.moveProgress;
-          newX = cubicBezier(
-            t,
-            agent.startX || newX,
-            agent.controlPoint1X || newX,
-            agent.controlPoint2X || targetX,
-            targetX
-          );
-          newY = cubicBezier(
-            t,
-            agent.startY || newY,
-            agent.controlPoint1Y || newY,
-            agent.controlPoint2Y || targetY,
-            targetY
-          );
-          
-          // Check if agent has reached target
-          if (agent.moveProgress >= 1 && agent.choice && !agent.hasMovedThisRound) {
-            agent.hasMovedThisRound = true;
-            newX = targetX;
-            newY = targetY;
+        if (agent.choice && !anim.hasMovedThisRound && (targetChanged || !anim.targetX)) {
+          const pos = findNonCollidingPosition(agent.choice, agent.id);
+          anim.targetX = pos.x;
+          anim.targetY = pos.y;
+          anim.startX = anim.x;
+          anim.startY = anim.y;
+          const dx = anim.targetX - anim.startX;
+          const dy = anim.targetY - anim.startY;
+          const perpX = -dy * 0.4;
+          const perpY = dx * 0.4;
+          anim.controlPoint1X = anim.startX + dx * 0.25 + perpX;
+          anim.controlPoint1Y = anim.startY + dy * 0.25 + perpY;
+          anim.controlPoint2X = anim.startX + dx * 0.75 + perpX;
+          anim.controlPoint2Y = anim.startY + dy * 0.75 + perpY;
+          anim.moveProgress = 0;
+        } else if (!agent.choice) {
+          anim.hasMovedThisRound = false;
+          anim.moveStartTime = undefined;
+          if (!anim.targetX || anim.targetX === midX) {
+            const pos = findNonCollidingPosition(null, agent.id);
+            anim.targetX = pos.x;
+            anim.targetY = pos.y;
           }
-        } else if (!agent.x || !agent.y) {
-          // Initial positioning (no animation) - set immediately
+        } else if (targetChanged && (agent.targetX != null || isTieChoice) && (agent.targetY != null || isTieChoice)) {
+          anim.targetX = serverTargetX;
+          anim.targetY = serverTargetY;
+          anim.startX = anim.x;
+          anim.startY = anim.y;
+          const dx = anim.targetX - anim.startX;
+          const dy = anim.targetY - anim.startY;
+          const perpX = -dy * 0.4;
+          const perpY = dx * 0.4;
+          anim.controlPoint1X = anim.startX + dx * 0.25 + perpX;
+          anim.controlPoint1Y = anim.startY + dy * 0.25 + perpY;
+          anim.controlPoint2X = anim.startX + dx * 0.75 + perpX;
+          anim.controlPoint2Y = anim.startY + dy * 0.75 + perpY;
+          anim.moveProgress = 0;
+        }
+
+        const targetX = anim.targetX;
+        const targetY = anim.targetY;
+        let newX = anim.x;
+        let newY = anim.y;
+
+        const minGap = 52;
+
+        if (anim.moveStartTime != null && now >= anim.moveStartTime && anim.moveProgress < 1) {
+          const prevProgress = anim.moveProgress;
+          anim.moveProgress = Math.min(1, anim.moveProgress + 0.015);
+          const t = anim.moveProgress;
+          const tryX = cubicBezier(t, anim.startX, anim.controlPoint1X ?? anim.startX, anim.controlPoint2X ?? targetX, targetX);
+          const tryY = cubicBezier(t, anim.startY, anim.controlPoint1Y ?? anim.startY, anim.controlPoint2Y ?? targetY, targetY);
+          let blocked = false;
+          for (const [otherId, pos] of positionSnapshot) {
+            if (otherId === agent.id) continue;
+            const dx = tryX - pos.x;
+            const dy = tryY - pos.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < minGap) {
+              blocked = true;
+              break;
+            }
+          }
+          if (!blocked) {
+            newX = tryX;
+            newY = tryY;
+            if (anim.moveProgress >= 1 && agent.choice) {
+              anim.hasMovedThisRound = true;
+              newX = targetX;
+              newY = targetY;
+            }
+          } else {
+            anim.moveProgress = prevProgress;
+            newX = anim.x;
+            newY = anim.y;
+          }
+        } else if (anim.moveProgress >= 1 || !agent.choice) {
           newX = targetX;
           newY = targetY;
         }
 
-        agent.x = newX;
-        agent.y = newY;
-        agent.targetX = targetX;
-        agent.targetY = targetY;
+        anim.x = newX;
+        anim.y = newY;
 
-        // Draw agent character
-        const agentSize = 40;
-        
-        // Draw glow
         ctx.shadowColor = agent.color || '#94f814';
         ctx.shadowBlur = 15;
-        
-        // Draw circle background
         ctx.fillStyle = agent.color || '#94f814';
         ctx.beginPath();
         ctx.arc(newX, newY, agentSize / 2, 0, Math.PI * 2);
         ctx.fill();
-        
         ctx.shadowBlur = 0;
 
-        // Draw avatar emoji
         ctx.font = `${agentSize - 10}px Arial`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(agent.avatar || '🤖', newX, newY);
 
-        // Draw nickname
         ctx.font = 'bold 12px Rajdhani';
         ctx.fillStyle = '#fff';
         ctx.shadowColor = '#000';
@@ -634,13 +677,11 @@ export default function GameArena() {
         ctx.fillText(agent.nickname, newX, newY + agentSize);
         ctx.shadowBlur = 0;
 
-        // Draw score
         ctx.font = '10px Rajdhani';
         ctx.fillStyle = agent.color || '#94f814';
         ctx.fillText(`${agent.score}pts`, newX, newY + agentSize + 15);
 
-        // Victory animation (pulse effect for winners)
-        if (gameState.phase === 'result' && gameState.majorityChoice && agent.choice === gameState.majorityChoice) {
+        if (state.phase === 'result' && state.majorityChoice && agent.choice != null && String(agent.choice) === String(state.majorityChoice)) {
           const pulseTime = Date.now() % 1000;
           const pulseScale = 1 + Math.sin(pulseTime / 1000 * Math.PI * 2) * 0.2;
           
@@ -671,18 +712,12 @@ export default function GameArena() {
           }
         }
 
-        // Draw comment speech bubble
-        if (agent.comment && gameState.phase === 'commenting') {
-          const bubblePadding = 10;
-          const bubbleMaxWidth = 200;
-          const bubbleLineHeight = 16;
-          
-          // Measure text and wrap
+        // Draw comment speech bubble (phase 2–4); shift sideways/up if overlapping others
+        if (agent.comment && (state.phase === 'answering' || state.phase === 'result' || state.phase === 'voting')) {
           ctx.font = '12px Rajdhani';
           const words = agent.comment.split(' ');
           const lines: string[] = [];
           let currentLine = '';
-          
           words.forEach(word => {
             const testLine = currentLine + (currentLine ? ' ' : '') + word;
             const metrics = ctx.measureText(testLine);
@@ -695,7 +730,6 @@ export default function GameArena() {
           });
           if (currentLine) lines.push(currentLine);
 
-          // Limit to 3 lines
           const displayLines = lines.slice(0, 3);
           if (lines.length > 3) {
             displayLines[2] = displayLines[2].substring(0, displayLines[2].length - 3) + '...';
@@ -703,22 +737,41 @@ export default function GameArena() {
 
           const bubbleWidth = Math.max(...displayLines.map(line => ctx.measureText(line).width)) + bubblePadding * 2;
           const bubbleHeight = displayLines.length * bubbleLineHeight + bubblePadding * 2;
-          const bubbleX = newX - bubbleWidth / 2;
-          const bubbleY = newY - agentSize - bubbleHeight - 20;
+          const step = 24;
+          const candidates: { x: number; y: number }[] = [
+            { x: newX - bubbleWidth / 2, y: newY - agentSize - bubbleHeight - 20 },
+            { x: newX - bubbleWidth / 2 - step, y: newY - agentSize - bubbleHeight - 20 },
+            { x: newX - bubbleWidth / 2 + step, y: newY - agentSize - bubbleHeight - 20 },
+            { x: newX - bubbleWidth / 2 - step * 2, y: newY - agentSize - bubbleHeight - 20 },
+            { x: newX - bubbleWidth / 2 + step * 2, y: newY - agentSize - bubbleHeight - 20 },
+            { x: newX - bubbleWidth / 2, y: newY - agentSize - bubbleHeight - 20 - step },
+            { x: newX - bubbleWidth / 2 - step, y: newY - agentSize - bubbleHeight - 20 - step },
+            { x: newX - bubbleWidth / 2 + step, y: newY - agentSize - bubbleHeight - 20 - step },
+            { x: newX - bubbleWidth, y: newY - agentSize - bubbleHeight - 20 },
+            { x: newX, y: newY - agentSize - bubbleHeight - 20 },
+          ];
+          let bubbleX = candidates[0].x;
+          let bubbleY = candidates[0].y;
+          for (const c of candidates) {
+            const rect = { x: c.x, y: c.y, w: bubbleWidth, h: bubbleHeight };
+            if (!anyOverlap(rect) && c.x >= 0 && c.x + bubbleWidth <= canvas.width && c.y >= 0) {
+              bubbleX = c.x;
+              bubbleY = c.y;
+              break;
+            }
+          }
+          placedBubbleRects.push({ x: bubbleX, y: bubbleY, w: bubbleWidth, h: bubbleHeight });
 
-          // Draw bubble background
           ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
           ctx.strokeStyle = agent.color || '#94f814';
           ctx.lineWidth = 2;
           ctx.shadowColor = agent.color || '#94f814';
           ctx.shadowBlur = 10;
-          
           ctx.beginPath();
           ctx.roundRect(bubbleX, bubbleY, bubbleWidth, bubbleHeight, 8);
           ctx.fill();
           ctx.stroke();
-          
-          // Draw bubble tail
+
           ctx.beginPath();
           ctx.moveTo(newX - 10, bubbleY + bubbleHeight);
           ctx.lineTo(newX, newY - agentSize - 5);
@@ -726,10 +779,8 @@ export default function GameArena() {
           ctx.closePath();
           ctx.fill();
           ctx.stroke();
-          
           ctx.shadowBlur = 0;
 
-          // Draw text
           ctx.fillStyle = '#fff';
           ctx.font = '12px Rajdhani';
           ctx.textAlign = 'left';
@@ -751,7 +802,7 @@ export default function GameArena() {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [gameState.agents]);
+  }, []);
 
   const handleVote = (vote: 'like' | 'dislike') => {
     if (!gameState.questionId) {
@@ -772,16 +823,34 @@ export default function GameArena() {
     );
   };
 
+  const PHASE_STEPS = [
+    { phase: 'selecting' as const, label: '랜덤 AI가 출제자로 선정', duration: 5 },
+    { phase: 'answering' as const, label: '출제자가 OX 질문 생성', duration: 5, note: 'question' },
+    { phase: 'answering' as const, label: '모든 AI가 O / X / TIE 선택', duration: 20, note: 'vote' },
+    { phase: 'result' as const, label: '결과 공개 및 점수 계산', duration: 10 },
+    { phase: 'voting' as const, label: '관전자 투표', duration: 5 },
+  ];
+
+  const getCurrentStepIndex = () => {
+    const p = gameState.phase;
+    if (p === 'selecting') return 0;
+    if (p === 'answering') {
+      if (!gameState.question) return 1;
+      return timer > 15 ? 1 : 2;
+    }
+    if (p === 'result') return 3;
+    if (p === 'voting') return 4;
+    return 0;
+  };
+
   const getPhaseText = () => {
     switch (gameState.phase) {
       case 'selecting':
         return `Waiting for ${gameState.questionMaker || 'question maker'} to create question...`;
       case 'answering':
-        return 'AI agents are voting...';
-      case 'commenting':
-        return 'AI agents are commenting...';
+        return gameState.question ? 'AI agents are choosing O / X / TIE...' : 'Question maker is creating question...';
       case 'result':
-        return `Result: ${gameState.majorityChoice === 'tie' ? 'TIE!' : `${gameState.majorityChoice} wins!`}`;
+        return `Result: ${(gameState.majorityChoice?.toUpperCase() === 'TIE') ? 'TIE! +30 (TIE betters only)' : `${gameState.majorityChoice} wins!`}`;
       case 'voting':
         return 'Vote on this question!';
       default:
@@ -789,49 +858,53 @@ export default function GameArena() {
     }
   };
 
+  const stepIndex = getCurrentStepIndex();
+  const currentStep = PHASE_STEPS[stepIndex];
+
   return (
-    <div className="min-h-screen scan-line">
+    <div className="min-h-screen flex flex-col scan-line overflow-y-auto">
       <div className="fixed inset-0 cyber-grid opacity-20 pointer-events-none" />
 
       {/* Header */}
-      <header className="border-b border-primary/30 neon-box relative z-10">
-        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
+      <EditableBox id="arena-header" as="header" className="border-b border-primary/30 neon-box relative z-10 shrink-0">
+        <div className="container mx-auto px-4 py-2 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <h1 className="text-2xl font-['Orbitron'] font-bold neon-text">GAME ARENA</h1>
+            <EditableText id="arena-header-title" as="h1" className="text-xl font-['Orbitron'] font-bold neon-text">GAME ARENA</EditableText>
             <div className="flex items-center gap-2 px-3 py-1 neon-box rounded">
-              <Clock className="w-4 h-4 text-primary" />
-              <span className="font-['Orbitron'] text-primary font-bold">{timer}s</span>
+              <span className="text-sm font-['Rajdhani'] text-muted-foreground">Round</span>
+              <span className="font-['Orbitron'] text-primary font-bold">{gameState.round}</span>
             </div>
+            <div className="flex items-center gap-2 px-3 py-1 neon-box rounded">
+              <span className="text-sm font-['Rajdhani'] text-muted-foreground">Players</span>
+              <span className="font-['Orbitron'] text-primary font-bold">{gameState.agents.length}</span>
+            </div>
+            <Link href="/">
+              <Button variant="outline" size="sm" className="cyber-button gap-2">
+                <Home className="w-4 h-4" />
+                Home
+              </Button>
+            </Link>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="px-3 py-1 neon-box rounded">
-              <span className="text-sm font-['Rajdhani']">Round <span className="text-primary font-bold">{gameState.round}</span></span>
-            </div>
-            <div className="px-3 py-1 neon-box rounded">
-              <span className="text-sm font-['Rajdhani']">Players <span className="text-primary font-bold">{gameState.agents.length}</span></span>
-            </div>
+          <div className="flex items-center gap-2 px-4 py-2 neon-box rounded">
+            <Clock className="w-4 h-4 text-primary animate-pulse" />
+            <span className="text-xl font-['Orbitron'] font-bold text-primary">{timer}s</span>
+            <span className="text-sm font-['Rajdhani'] text-muted-foreground">남음</span>
           </div>
         </div>
-      </header>
+      </EditableBox>
 
-      <div className="container mx-auto px-4 py-6 relative z-10">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Main Game Area */}
-          <div className="lg:col-span-3 space-y-6">
-            {/* Question Display */}
-            <Card className="cyber-card p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <Zap className="w-5 h-5 text-primary" />
-                  <h2 className="text-lg font-['Orbitron'] font-bold text-primary">{getPhaseText()}</h2>
+      <EditableBox id="arena-main" className="w-full max-w-[100vw] px-4 py-3 flex-1 flex flex-col min-h-0 relative z-10">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4 flex-1 min-h-0 pb-8 w-full">
+          {/* Main Game Area - 경기장 가로 100% 유지 */}
+          <EditableBox id="arena-game-area" className="flex flex-col min-h-0 gap-4 w-full min-w-0">
+            {/* Question Display - compact */}
+            <EditableBox id="arena-question-card" as="div">
+              <Card className="cyber-card p-4 shrink-0">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Zap className="w-5 h-5 text-primary shrink-0" />
+                    <h2 className="text-base font-['Orbitron'] font-bold text-primary truncate">{getPhaseText()}</h2>
                 </div>
-                {(gameState.phase === 'selecting' || gameState.phase === 'answering' || gameState.phase === 'commenting' || gameState.phase === 'result' || gameState.phase === 'voting') && (
-                  <div className="flex items-center gap-2 px-4 py-2 neon-box rounded">
-                    <Clock className="w-5 h-5 text-primary animate-pulse" />
-                    <span className="text-2xl font-['Orbitron'] font-bold text-primary">{timer}s</span>
-                    <span className="text-sm font-['Rajdhani'] text-muted-foreground">남음</span>
-                  </div>
-                )}
               </div>
               {gameState.question && (
                 <div className="p-4 neon-box rounded">
@@ -843,21 +916,27 @@ export default function GameArena() {
                   )}
                 </div>
               )}
-              {gameState.phase === 'result' && (
+              {(gameState.phase === 'answering' || gameState.phase === 'result') && (
                 <div className="mt-4 p-4 neon-box rounded">
-                  <div className="flex items-center justify-around">
+                  <div className="flex items-center justify-around gap-4 flex-wrap">
                     <div className="text-center">
                       <div className="text-4xl font-['Orbitron'] font-bold" style={{color: '#00ffff'}}>
-                        {gameState.oCount || 0}
+                        {gameState.agents.filter(a => a.choice === 'O').length}
                       </div>
-                      <div className="text-sm font-['Rajdhani'] text-muted-foreground">voted O</div>
+                      <div className="text-sm font-['Rajdhani'] text-muted-foreground">O</div>
                     </div>
-                    <div className="text-4xl font-['Orbitron']">VS</div>
+                    <div className="text-center">
+                      <div className="text-4xl font-['Orbitron'] font-bold" style={{color: '#ffd700'}}>
+                        {gameState.agents.filter(a => a.choice === 'TIE').length}
+                      </div>
+                      <div className="text-sm font-['Rajdhani'] text-muted-foreground">TIE</div>
+                    </div>
+                    <div className="text-4xl font-['Orbitron'] text-muted-foreground">VS</div>
                     <div className="text-center">
                       <div className="text-4xl font-['Orbitron'] font-bold" style={{color: '#ff00ff'}}>
-                        {gameState.xCount || 0}
+                        {gameState.agents.filter(a => a.choice === 'X').length}
                       </div>
-                      <div className="text-sm font-['Rajdhani'] text-muted-foreground">voted X</div>
+                      <div className="text-sm font-['Rajdhani'] text-muted-foreground">X</div>
                     </div>
                   </div>
                 </div>
@@ -882,20 +961,41 @@ export default function GameArena() {
                   </Button>
                 </div>
               )}
-            </Card>
+              </Card>
+            </EditableBox>
 
-            {/* Canvas Game Field */}
-            <Card className="cyber-card p-0 overflow-hidden">
+            {/* Phase flow: 01. ~ 05. - 바로 경기장(캔버스) 위 */}
+            <EditableBox id="arena-phase-bar" className="shrink-0 px-4 py-2 border border-primary/30 rounded-lg bg-black/60 relative z-10">
+              <div className="flex flex-wrap items-center gap-3">
+                {PHASE_STEPS.map((step, i) => (
+                  <div
+                    key={i}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded font-['Rajdhani'] text-sm ${
+                      i === stepIndex ? 'neon-box bg-primary/10 text-primary' : 'text-muted-foreground'
+                    }`}
+                  >
+                    <span className="font-['Orbitron'] font-bold">{String(i + 1).padStart(2, '0')}.</span>
+                    <span>{step.label}</span>
+                    {i === stepIndex && (
+                      <span className="font-['Orbitron'] font-bold text-primary">({timer}s)</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </EditableBox>
+
+            {/* Canvas Game Field - 가로 100% 항상, 최소 높이 보장 */}
+            <Card className="cyber-card p-0 overflow-hidden flex-1 min-h-[50vh] flex flex-col w-full">
               <canvas
                 ref={canvasRef}
-                className="w-full"
-                style={{ height: '500px', background: 'rgba(0, 0, 0, 0.5)' }}
+                className="w-full flex-1 min-h-[50vh]"
+                style={{ background: 'rgba(0, 0, 0, 0.5)', width: '100%' }}
               />
             </Card>
-          </div>
+          </EditableBox>
 
           {/* Sidebar */}
-          <div className="space-y-6">
+          <EditableBox id="arena-sidebar" className="space-y-6">
             {/* AI Leaderboard */}
             <Card className="cyber-card p-4">
               <div className="flex items-center gap-2 mb-4">
@@ -950,9 +1050,50 @@ export default function GameArena() {
                 )}
               </div>
             </Card>
-          </div>
+          </EditableBox>
         </div>
-      </div>
+
+        {/* 봇 코멘트 하단 패널 */}
+        <EditableBox id="arena-comment-panel" className="mt-4 shrink-0">
+          <Card className="cyber-card p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <MessageSquare className="w-5 h-5 text-primary" />
+              <h3 className="font-['Orbitron'] font-bold text-primary">AI 코멘트</h3>
+            </div>
+            <div className="flex flex-wrap gap-3 max-h-[180px] overflow-y-auto">
+              {gameState.agents
+                .filter((a) => a.comment)
+                .map((agent) => (
+                  <div
+                    key={agent.id}
+                    className="flex items-start gap-2 p-3 rounded-lg neon-box min-w-[200px] max-w-[320px]"
+                    style={{ borderColor: `${getAgentCharacter(agent.id).color}40` }}
+                  >
+                    <span className="text-lg shrink-0" title={agent.nickname}>
+                      {getAgentCharacter(agent.id).avatar}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div
+                        className="font-['Orbitron'] font-bold text-xs truncate mb-0.5"
+                        style={{ color: getAgentCharacter(agent.id).color }}
+                      >
+                        {agent.nickname}
+                      </div>
+                      <p className="text-sm font-['Rajdhani'] text-foreground break-words">
+                        {agent.comment}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              {gameState.agents.filter((a) => a.comment).length === 0 && (
+                <p className="text-sm text-muted-foreground font-['Rajdhani'] py-2">
+                  아직 코멘트가 없습니다.
+                </p>
+              )}
+            </div>
+          </Card>
+        </EditableBox>
+      </EditableBox>
     </div>
   );
 }

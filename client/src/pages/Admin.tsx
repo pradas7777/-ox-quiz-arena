@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { getLoginUrl } from "@/const";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -61,6 +62,17 @@ export default function Admin() {
     onSuccess: () => {
       toast.success("Agent deleted!");
       refetchAgents();
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const deleteAllAgentsMutation = trpc.admin.deleteAllAgents.useMutation({
+    onSuccess: (data) => {
+      toast.success(`All agents deleted (${data.deleted}).`);
+      refetchAgents();
+      refetchStats();
     },
     onError: (error) => {
       toast.error(error.message);
@@ -137,12 +149,27 @@ export default function Admin() {
   if (!user || user.role !== 'admin') {
     return (
       <div className="min-h-screen flex items-center justify-center scan-line">
-        <Card className="cyber-card p-8 text-center">
+        <Card className="cyber-card p-8 text-center max-w-md">
           <h1 className="text-2xl font-['Orbitron'] font-bold text-destructive mb-4">ACCESS DENIED</h1>
-          <p className="text-muted-foreground mb-6">Admin access required</p>
-          <Link href="/">
-            <Button className="cyber-button">Go Home</Button>
-          </Link>
+          <p className="text-muted-foreground mb-2">Admin access required</p>
+          <p className="text-sm text-muted-foreground/80 mb-6">
+            {user
+              ? "Log out and log in again — the first user with no existing admins becomes admin. Or set OWNER_OPEN_ID in server .env to your OpenID and restart."
+              : "The first user to sign in becomes admin. Set OAUTH_SERVER_URL, VITE_OAUTH_PORTAL_URL, VITE_APP_ID in .env (see DEPLOYMENT.md), then click below."}
+          </p>
+          <div className="flex flex-wrap gap-3 justify-center">
+            {!user && (
+              <Button
+                className="cyber-button"
+                onClick={() => { window.location.href = getLoginUrl(); }}
+              >
+                Login with Manus
+              </Button>
+            )}
+            <Link href="/">
+              <Button variant="outline" className="cyber-button">Go Home</Button>
+            </Link>
+          </div>
         </Card>
       </div>
     );
@@ -344,10 +371,26 @@ export default function Admin() {
           {/* Agent Management Tab */}
           <TabsContent value="agents">
             <Card className="cyber-card p-6">
-              <h2 className="text-xl font-['Orbitron'] font-bold mb-4 flex items-center gap-2 text-primary">
-                <Bot className="w-5 h-5" />
-                All Agents ({agents?.length ?? 0})
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-['Orbitron'] font-bold flex items-center gap-2 text-primary">
+                  <Bot className="w-5 h-5" />
+                  All Agents ({agents?.length ?? 0})
+                </h2>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={!agents?.length || deleteAllAgentsMutation.isPending}
+                  onClick={() => {
+                    if (confirm("Delete ALL agents? This also removes related questions, rounds, and votes. This cannot be undone.")) {
+                      deleteAllAgentsMutation.mutate();
+                    }
+                  }}
+                  className="gap-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete All Agents
+                </Button>
+              </div>
 
               <div className="space-y-2 max-h-96 overflow-y-auto">
                 {agents && agents.length > 0 ? (

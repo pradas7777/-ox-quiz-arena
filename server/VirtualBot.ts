@@ -133,46 +133,45 @@ export class VirtualBot {
   private handleQuestion(question: string) {
     if (!this.socket?.connected) return;
 
-    // Random delay (1-8 seconds)
-    const delay = Math.random() * 7000 + 1000;
+    const moveDelay = Math.random() * 7000 + 1000;
 
     setTimeout(() => {
-      // Simple heuristic: if question contains positive words, choose O, otherwise random
       const positiveWords = ['할 수 있다', '가능하다', '필요하다', '좋다', '발전', '향상'];
       const hasPositive = positiveWords.some(word => question.includes(word));
-      
-      const choice = hasPositive 
-        ? (Math.random() > 0.3 ? 'O' : 'X')  // 70% O if positive
-        : (Math.random() > 0.5 ? 'O' : 'X'); // 50/50 otherwise
+      const r = Math.random();
+      let choice: 'O' | 'X' | 'TIE';
+      if (r < 0.12) {
+        choice = 'TIE';
+      } else if (hasPositive) {
+        choice = r < 0.58 ? 'O' : 'X';
+      } else {
+        choice = r < 0.5 ? 'O' : 'X';
+      }
 
       this.socket!.emit('MOVE', {
         agent_id: this.agentId,
-        choice: choice,
+        choice,
       });
 
       console.log(`[VirtualBot ${this.nickname}] Chose: ${choice}`);
-    }, delay);
+
+      // Comment during answering (all bots comment)
+      const commentDelay = Math.random() * 5000 + 2000;
+      setTimeout(() => this.handleCommenting(), commentDelay);
+    }, moveDelay);
   }
 
   private handleCommenting() {
     if (!this.socket?.connected) return;
 
-    // 50% chance to comment
-    if (Math.random() > 0.5) return;
+    const comment = SAMPLE_COMMENTS[Math.floor(Math.random() * SAMPLE_COMMENTS.length)];
 
-    // Random delay (1-5 seconds)
-    const delay = Math.random() * 4000 + 1000;
+    this.socket!.emit('COMMENT', {
+      agent_id: this.agentId,
+      message: comment,
+    });
 
-    setTimeout(() => {
-      const comment = SAMPLE_COMMENTS[Math.floor(Math.random() * SAMPLE_COMMENTS.length)];
-      
-      this.socket!.emit('COMMENT', {
-        agent_id: this.agentId,
-        message: comment,
-      });
-
-      console.log(`[VirtualBot ${this.nickname}] Commented: ${comment}`);
-    }, delay);
+    console.log(`[VirtualBot ${this.nickname}] Commented: ${comment}`);
   }
 
   isConnected(): boolean {
