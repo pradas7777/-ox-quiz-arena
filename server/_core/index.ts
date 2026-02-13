@@ -87,6 +87,13 @@ async function startServer() {
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  // API 응답 캐시 방지 (304 Not Modified 시 본문 비어서 JSON 파싱 에러 방지)
+  app.use("/api", (_req, res, next) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    next();
+  });
   registerOAuthRoutes(app);
   registerAdminLoginRoute(app);
   if (!ENV.adminPassword) {
