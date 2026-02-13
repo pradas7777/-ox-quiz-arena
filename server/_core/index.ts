@@ -1,13 +1,59 @@
 import "dotenv/config";
+import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
+import { getSessionCookieOptions } from "./cookies";
+import * as db from "../db";
+import { ENV } from "./env";
+import { sdk } from "./sdk";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { setupSocketServer } from "../socketServer";
+
+const ADMIN_PASSWORD_OPEN_ID = "admin-password";
+
+function registerAdminLoginRoute(app: express.Express) {
+  app.post("/api/admin-login", async (req, res) => {
+    try {
+      const password = typeof req.body?.password === "string" ? req.body.password : "";
+      if (!ENV.adminPassword) {
+        res.status(400).json({ ok: false, error: "Admin password login is not configured. Set ADMIN_PASSWORD in server .env." });
+        return;
+      }
+      if (!password || password !== ENV.adminPassword) {
+        res.status(401).json({ ok: false, error: "Invalid admin password." });
+        return;
+      }
+      const database = await db.getDb();
+      if (!database) {
+        res.status(503).json({ ok: false, error: "Database not available. Set DATABASE_URL in server .env." });
+        return;
+      }
+      await db.upsertUser({
+        openId: ADMIN_PASSWORD_OPEN_ID,
+        name: "Admin",
+        email: null,
+        loginMethod: "admin-password",
+        role: "admin",
+        lastSignedIn: new Date(),
+      });
+      const sessionToken = await sdk.createSessionToken(ADMIN_PASSWORD_OPEN_ID, {
+        name: "Admin",
+        expiresInMs: ONE_YEAR_MS,
+      });
+      const cookieOptions = getSessionCookieOptions(req);
+      res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+      res.status(200).json({ ok: true, success: true });
+    } catch (e) {
+      console.error("[admin-login]", e);
+      res.status(500).json({ ok: false, error: String(e) });
+    }
+  });
+}
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -34,8 +80,8 @@ async function startServer() {
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
-  // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
+  registerAdminLoginRoute(app);
   // tRPC API
   app.use(
     "/api/trpc",

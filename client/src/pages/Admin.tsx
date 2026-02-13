@@ -89,16 +89,43 @@ export default function Admin() {
     },
   });
 
-  const adminLoginMutation = trpc.auth.adminLogin.useMutation({
-    onSuccess: () => {
-      toast.success("Admin login successful!");
-      setAdminPassword("");
-      refresh();
-    },
-    onError: (error) => {
-      toast.error(error.message);
-    },
-  });
+  const [adminLoginPending, setAdminLoginPending] = useState(false);
+
+  const handleAdminLogin = async () => {
+    const pwd = adminPassword.trim();
+    if (!pwd) return;
+    setAdminLoginPending(true);
+    try {
+      const res = await fetch("/api/admin-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ password: pwd }),
+      });
+      if (res.ok) {
+        let data: { ok?: boolean; error?: string } = {};
+        try {
+          data = await res.json();
+        } catch {
+          // 200이면 쿠키는 설정된 것으로 간주
+        }
+        if (data.ok !== false) {
+          toast.success("Admin login successful!");
+          setAdminPassword("");
+          refresh();
+        } else {
+          toast.error(data.error || "Login failed");
+        }
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error((data as { error?: string }).error || "Login failed");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Login failed");
+    } finally {
+      setAdminLoginPending(false);
+    }
+  };
 
   const handleSpawnMultipleBots = async () => {
     for (let i = 0; i < spawnCount; i++) {
@@ -177,16 +204,16 @@ export default function Admin() {
                 placeholder="Admin password"
                 value={adminPassword}
                 onChange={(e) => setAdminPassword(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && adminLoginMutation.mutate({ password: adminPassword })}
+                onKeyDown={(e) => e.key === "Enter" && handleAdminLogin()}
                 className="neon-box bg-black/50 border-primary/50 text-foreground flex-1"
-                disabled={adminLoginMutation.isPending}
+                disabled={adminLoginPending}
               />
               <Button
                 className="cyber-button"
-                onClick={() => adminLoginMutation.mutate({ password: adminPassword })}
-                disabled={!adminPassword.trim() || adminLoginMutation.isPending}
+                onClick={handleAdminLogin}
+                disabled={!adminPassword.trim() || adminLoginPending}
               >
-                {adminLoginMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "로그인"}
+                {adminLoginPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "로그인"}
               </Button>
             </div>
           </div>

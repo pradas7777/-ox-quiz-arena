@@ -1,15 +1,11 @@
-import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
+import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
-import { ENV } from "./_core/env";
-import { sdk } from "./_core/sdk";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import * as db from "./db";
 import crypto from "crypto";
 import { adminRouter } from "./adminRouter";
-
-const ADMIN_PASSWORD_OPEN_ID = "admin-password";
 
 export const appRouter = router({
   system: systemRouter,
@@ -23,36 +19,6 @@ export const appRouter = router({
         success: true,
       } as const;
     }),
-    /** 관리자 비밀번호로 로그인 (ADMIN_PASSWORD 환경변수 설정 필요). */
-    adminLogin: publicProcedure
-      .input(z.object({ password: z.string().min(1) }))
-      .mutation(async ({ ctx, input }) => {
-        if (!ENV.adminPassword) {
-          throw new Error("Admin password login is not configured. Set ADMIN_PASSWORD in server .env.");
-        }
-        if (input.password !== ENV.adminPassword) {
-          throw new Error("Invalid admin password.");
-        }
-        const database = await db.getDb();
-        if (!database) {
-          throw new Error("Database not available. Set DATABASE_URL in server .env.");
-        }
-        await db.upsertUser({
-          openId: ADMIN_PASSWORD_OPEN_ID,
-          name: "Admin",
-          email: null,
-          loginMethod: "admin-password",
-          role: "admin",
-          lastSignedIn: new Date(),
-        });
-        const sessionToken = await sdk.createSessionToken(ADMIN_PASSWORD_OPEN_ID, {
-          name: "Admin",
-          expiresInMs: ONE_YEAR_MS,
-        });
-        const cookieOptions = getSessionCookieOptions(ctx.req);
-        ctx.res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-        return { success: true } as const;
-      }),
   }),
 
   agent: router({
