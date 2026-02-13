@@ -1,5 +1,11 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config();
+dotenv.config({ path: path.join(__dirname, "..", ".env") });
 import express from "express";
 import { createServer } from "http";
 import net from "net";
@@ -19,12 +25,13 @@ const ADMIN_PASSWORD_OPEN_ID = "admin-password";
 function registerAdminLoginRoute(app: express.Express) {
   app.post("/api/admin-login", async (req, res) => {
     try {
-      const password = typeof req.body?.password === "string" ? req.body.password : "";
-      if (!ENV.adminPassword) {
-        res.status(400).json({ ok: false, error: "Admin password login is not configured. Set ADMIN_PASSWORD in server .env." });
+      const password = (typeof req.body?.password === "string" ? req.body.password : "").trim();
+      const expected = (ENV.adminPassword ?? "").trim();
+      if (!expected) {
+        res.status(400).json({ ok: false, error: "Admin password login is not configured. Set ADMIN_PASSWORD in server .env (or project root .env)." });
         return;
       }
-      if (!password || password !== ENV.adminPassword) {
+      if (!password || password !== expected) {
         res.status(401).json({ ok: false, error: "Invalid admin password." });
         return;
       }
@@ -82,6 +89,9 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerOAuthRoutes(app);
   registerAdminLoginRoute(app);
+  if (!ENV.adminPassword) {
+    console.warn("[admin-login] ADMIN_PASSWORD is not set. Add ADMIN_PASSWORD=your_password to server/.env or project root .env and restart.");
+  }
   // tRPC API
   app.use(
     "/api/trpc",
