@@ -1,26 +1,13 @@
 {
   "version": 2,
   "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/node"
-    }
+    { "src": "package.json", "use": "@vercel/node" }
   ],
   "routes": [
-    {
-      "src": "/socket.io/(.*)",
-      "dest": "/server/index.js"
-    },
-    {
-      "src": "/api/(.*)",
-      "dest": "/server/index.js"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/client/dist/$1"
-    }
+    { "src": "/socket.io/(.*)", "dest": "/server/index.js" },
+    { "src": "/api/(.*)", "dest": "/server/index.js" },
+    { "src": "/(.*\\.(js|css|ico|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|json))", "dest": "/dist/public/$1" },
+    { "src": "/(.*)", "dest": "/dist/public/index.html" }
   ],
-  "env": {
-    "NODE_ENV": "production"
-  }
+  "env": { "NODE_ENV": "production" }
 }
