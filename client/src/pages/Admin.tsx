@@ -12,9 +12,10 @@ import { Loader2, Plus, Trash2, BarChart3, RefreshCw, Bot, Palette, Settings } f
 import { Link } from "wouter";
 
 export default function Admin() {
-  const { user, loading } = useAuth();
+  const { user, loading, refresh } = useAuth();
   const [botName, setBotName] = useState("");
   const [spawnCount, setSpawnCount] = useState(5);
+  const [adminPassword, setAdminPassword] = useState("");
   
   // Theme settings state
   const [primaryColor, setPrimaryColor] = useState("#94f814");
@@ -89,6 +90,17 @@ export default function Admin() {
     },
   });
 
+  const adminLoginMutation = trpc.auth.adminLogin.useMutation({
+    onSuccess: () => {
+      toast.success("Admin login successful!");
+      setAdminPassword("");
+      refresh();
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
   const handleSpawnMultipleBots = async () => {
     for (let i = 0; i < spawnCount; i++) {
       await spawnBotMutation.mutateAsync({
@@ -155,8 +167,33 @@ export default function Admin() {
           <p className="text-sm text-muted-foreground/80 mb-6">
             {user
               ? "Log out and log in again — the first user with no existing admins becomes admin. Or set OWNER_OPEN_ID in server .env to your OpenID and restart."
-              : "The first user to sign in becomes admin. Set OAUTH_SERVER_URL, VITE_OAUTH_PORTAL_URL, VITE_APP_ID in .env (see DEPLOYMENT.md), then click below."}
+              : "Sign in with Manus (first user becomes admin), or use the admin password below if configured."}
           </p>
+
+          {/* Admin password login */}
+          <div className="mb-6 text-left space-y-2">
+            <Label className="text-sm font-['Rajdhani'] text-muted-foreground">관리자 비밀번호 로그인</Label>
+            <div className="flex gap-2">
+              <Input
+                type="password"
+                placeholder="Admin password"
+                value={adminPassword}
+                onChange={(e) => setAdminPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && adminLoginMutation.mutate({ password: adminPassword })}
+                className="neon-box bg-black/50 border-primary/50 text-foreground flex-1"
+                disabled={adminLoginMutation.isPending}
+              />
+              <Button
+                className="cyber-button"
+                onClick={() => adminLoginMutation.mutate({ password: adminPassword })}
+                disabled={!adminPassword.trim() || adminLoginMutation.isPending}
+              >
+                {adminLoginMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "로그인"}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground/70">서버 .env에 ADMIN_PASSWORD 설정 시 사용 가능</p>
+          </div>
+
           <div className="flex flex-wrap gap-3 justify-center">
             {!user && (
               <Button

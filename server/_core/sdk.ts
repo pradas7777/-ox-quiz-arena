@@ -269,6 +269,15 @@ class SDKServer {
     const signedInAt = new Date();
     let user = await db.getUserByOpenId(sessionUserId);
 
+    // Admin password login: no OAuth sync
+    if (sessionUserId === "admin-password") {
+      if (!user) {
+        throw ForbiddenError("Invalid admin session");
+      }
+      await db.upsertUser({ openId: user.openId, lastSignedIn: signedInAt });
+      return user;
+    }
+
     // If user not in DB, sync from OAuth server automatically
     if (!user) {
       try {
