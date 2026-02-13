@@ -4,6 +4,7 @@ import { DesignModeToggle } from "@/components/design/DesignModeToggle";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
+import { useEffect } from "react";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { DesignModeProvider } from "./contexts/DesignModeContext";
@@ -12,7 +13,13 @@ import Home from "./pages/Home";
 import GameArena from "./pages/GameArena";
 import Admin from "./pages/Admin";
 
+// Route list for tools that read window.__WOUTER_ROUTES__ (design mode, etc.)
+const APP_ROUTES = ["/", "/arena", "/admin", "/404"];
+
 function Router() {
+  useEffect(() => {
+    (window as unknown as { __WOUTER_ROUTES__?: string[] }).__WOUTER_ROUTES__ = APP_ROUTES;
+  }, []);
   return (
     <Switch>
       <Route path={"/"} component={Home} />
