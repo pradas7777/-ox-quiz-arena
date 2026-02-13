@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { getLoginUrl } from "@/const";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -166,13 +165,12 @@ export default function Admin() {
           <p className="text-muted-foreground mb-2">Admin access required</p>
           <p className="text-sm text-muted-foreground/80 mb-6">
             {user
-              ? "Log out and log in again — the first user with no existing admins becomes admin. Or set OWNER_OPEN_ID in server .env to your OpenID and restart."
-              : "Sign in with Manus (first user becomes admin), or use the admin password below if configured."}
+              ? "Log out and log in again, or set OWNER_OPEN_ID in server .env to your OpenID and restart."
+              : "관리자 비밀번호로 로그인하세요. 서버 .env에 ADMIN_PASSWORD를 설정해야 합니다."}
           </p>
 
-          {/* Admin password login */}
           <div className="mb-6 text-left space-y-2">
-            <Label className="text-sm font-['Rajdhani'] text-muted-foreground">관리자 비밀번호 로그인</Label>
+            <Label className="text-sm font-['Rajdhani'] text-muted-foreground">관리자 비밀번호</Label>
             <div className="flex gap-2">
               <Input
                 type="password"
@@ -191,18 +189,9 @@ export default function Admin() {
                 {adminLoginMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "로그인"}
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground/70">서버 .env에 ADMIN_PASSWORD 설정 시 사용 가능</p>
           </div>
 
           <div className="flex flex-wrap gap-3 justify-center">
-            {!user && (
-              <Button
-                className="cyber-button"
-                onClick={() => { window.location.href = getLoginUrl(); }}
-              >
-                Login with Manus
-              </Button>
-            )}
             <Link href="/">
               <Button variant="outline" className="cyber-button">Go Home</Button>
             </Link>

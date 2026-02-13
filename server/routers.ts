@@ -23,7 +23,7 @@ export const appRouter = router({
         success: true,
       } as const;
     }),
-    /** 관리자 비밀번호로 로그인 (ADMIN_PASSWORD 환경변수 설정 필요). Manus 없이 /admin 접근용. */
+    /** 관리자 비밀번호로 로그인 (ADMIN_PASSWORD 환경변수 설정 필요). */
     adminLogin: publicProcedure
       .input(z.object({ password: z.string().min(1) }))
       .mutation(async ({ ctx, input }) => {
@@ -32,6 +32,10 @@ export const appRouter = router({
         }
         if (input.password !== ENV.adminPassword) {
           throw new Error("Invalid admin password.");
+        }
+        const database = await db.getDb();
+        if (!database) {
+          throw new Error("Database not available. Set DATABASE_URL in server .env.");
         }
         await db.upsertUser({
           openId: ADMIN_PASSWORD_OPEN_ID,
@@ -47,7 +51,7 @@ export const appRouter = router({
         });
         const cookieOptions = getSessionCookieOptions(ctx.req);
         ctx.res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-        return { success: true };
+        return { success: true } as const;
       }),
   }),
 
